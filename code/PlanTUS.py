@@ -80,7 +80,7 @@ def compute_surface_metrics(surface_filepath):
     surface_filename = os.path.split(surface_filepath)[1]
     surface_name = surface_filename.replace(".surf.gii", "")
     
-    os.system('wb_command -surface-coordinates-to-metric {} {}'.format(
+    os.system('wb_command -logging OFF -surface-coordinates-to-metric {} {}'.format(
         surface_filepath,
         output_path + "/" + surface_name + "_coordinates.func.gii"))
     
@@ -88,7 +88,7 @@ def compute_surface_metrics(surface_filepath):
     surface_coordinates = np.asfarray(surface_coordinates)
     
 
-    os.system('wb_command -surface-normals {} {}'.format(
+    os.system('wb_command -logging OFF -surface-normals {} {}'.format(
         surface_filepath,
         output_path + "/" + surface_name + "_normals.func.gii"))
         
@@ -111,15 +111,15 @@ def create_pseudo_metric_nifti_from_surface(surface_filepath):
     surface_filename = os.path.split(surface_filepath)[1]
     surface_name = surface_filename.replace(".surf.gii", "")
     
-    os.system('wb_command -surface-coordinates-to-metric {} {}'.format(
+    os.system('wb_command -logging OFF -surface-coordinates-to-metric {} {}'.format(
         surface_filepath,
         output_path + "/" + surface_name + "_coordinates.func.gii"))
     
-    os.system("wb_command -metric-reduce {} MEAN {}".format(
+    os.system("wb_command -logging OFF -metric-reduce {} MEAN {}".format(
         output_path + "/" + surface_name + "_coordinates.func.gii",
         output_path + "/" + surface_name + "_coordinates_MEAN.func.gii"))
     
-    os.system("wb_command -metric-convert -to-nifti {} {}".format(
+    os.system("wb_command -logging OFF -metric-convert -to-nifti {} {}".format(
         output_path + "/" + surface_name + "_coordinates_MEAN.func.gii",
         output_path + "/" + surface_name + "_coordinates_MEAN.nii.gz"))
     
@@ -178,7 +178,7 @@ def create_metric_from_pseudo_nifti(metric_name, metric_values, surface_filepath
     
     nii_new.to_filename(output_path + "/" + metric_name + "_" + surface_name + ".nii.gz")
     
-    os.system("wb_command -metric-convert -from-nifti {} {} {}".format(
+    os.system("wb_command -logging OFF -metric-convert -from-nifti {} {} {}".format(
         output_path + "/" + metric_name + "_" + surface_name + ".nii.gz",
         surface_filepath,
         output_path + "/" + metric_name + "_" + surface_name + ".func.gii"))
@@ -191,7 +191,7 @@ def erode_metric(metric_filepath, surface_filepath, erosion_factor):
     
     import os
     
-    os.system("wb_command -metric-erode {} {} {} {}".format(
+    os.system("wb_command -logging OFF -metric-erode {} {} {} {}".format(
         metric_filepath,
         surface_filepath,
         str(erosion_factor), 
@@ -261,7 +261,7 @@ def create_avoidance_mask(simnibs_mesh_filepath, surface_filepath, erosion_facto
         output_path + "/final_tissues_bin.nii.gz"))
         
     # fill holes (i.e. air cavities/sinuses) in binarzed mask
-    os.system("wb_command -volume-fill-holes {} {}".format(
+    os.system("wb_command -logging OFF -volume-fill-holes {} {}".format(
         output_path + "/final_tissues_bin.nii.gz",
         output_path + "/final_tissues_bin_filled.nii.gz"))
     
@@ -278,7 +278,7 @@ def create_avoidance_mask(simnibs_mesh_filepath, surface_filepath, erosion_facto
     os.system("mris_convert {} {}".format(
         output_path + "/final_tissues_air ",
         output_path + "/final_tissues_air.surf.gii"))
-    os.system("wb_command -surface-smoothing {} 0.5 10 {}".format(
+    os.system("wb_command -logging OFF -surface-smoothing {} 0.5 10 {}".format(
         output_path + "/final_tissues_air.surf.gii",
         output_path + "/final_tissues_air.surf.gii"))
     os.system("mris_convert {} {}".format(
@@ -430,7 +430,7 @@ def stl_from_nii(nii_filepath, threshold):
         nii_path + "/" + nii_name,
         nii_path + "/" + nii_name))
     
-    os.system("wb_command -surface-smoothing {}.surf.gii 0.5 10 {}.surf.gii".format(
+    os.system("wb_command -logging OFF -surface-smoothing {}.surf.gii 0.5 10 {}.surf.gii".format(
         nii_path + "/" + nii_name,
         nii_path + "/" + nii_name))
     
@@ -451,7 +451,7 @@ def smooth_metric(metric_filepath, surface_filepath, FWHM):
     metric_filename = os.path.split(metric_filepath)[1]
     metric_name = metric_filename.replace(".func.gii", "")
     
-    os.system("wb_command -metric-smoothing {} {} {} {} -fwhm".format(
+    os.system("wb_command -logging OFF -metric-smoothing {} {} {} {} -fwhm".format(
         surface_filepath,
         metric_filepath,
         str(FWHM),
@@ -463,7 +463,7 @@ def mask_metric(metric_filepath, mask_filepath):
     
     import os
     
-    os.system("wb_command -metric-mask {} {} {}".format(
+    os.system("wb_command -logging OFF -metric-mask {} {} {}".format(
         metric_filepath,
         mask_filepath,
         metric_filepath))
@@ -478,7 +478,7 @@ def threshold_metric(metric_filepath, threshold):
     metric_filename = os.path.split(metric_filepath)[1]
     metric_name = metric_filename.replace(".func.gii", "")
     
-    os.system("wb_command -metric-math 'x < {}' {} -var x {}".format(
+    os.system("wb_command -logging OFF -metric-math 'x < {}' {} -var x {}".format(
         str(threshold),
         metric_path + "/" + metric_name + "_thresholded.func.gii",
         metric_filepath))
@@ -489,7 +489,7 @@ def add_structure_information(filepath, structure_label):
     
     import os
     
-    os.system("wb_command -set-structure {} {} -surface-type RECONSTRUCTION".format(
+    os.system("wb_command -logging OFF -set-structure {} {} -surface-type RECONSTRUCTION".format(
         filepath,
         structure_label))
     
@@ -560,12 +560,12 @@ def transform_surface_model(surface_model_filepath, transform_filepath, output_f
     import os
     
     # transform transducer file
-    os.system("wb_command -surface-apply-affine {} {} {}".format(
+    os.system("wb_command -logging OFF -surface-apply-affine {} {} {}".format(
         surface_model_filepath,
         transform_filepath,
         output_filepath))
 
-    os.system("wb_command -set-structure {} {} -surface-type RECONSTRUCTION".format(
+    os.system("wb_command -logging OFF -set-structure {} {} -surface-type RECONSTRUCTION".format(
         output_filepath,
         structure))
     
@@ -1130,7 +1130,7 @@ def prepare_acoustic_simulation(vertex_number,
     focus_position_transform_filepath = output_path_vtx + "/focus_position_matrix_" + target_roi_name + "_vtx" + str(vertex_number) + ".txt"        
     np.savetxt(focus_position_transform_filepath, focus_position_transform)
     
-    ellipsoid_output_filepath = output_path_vtx + "/focus_" + target_roi_name + "_vtx" + str(vertex_number) + ".surf.gii"
+    ellipsoid_output_filepath = output_path_vtx + "/focus_" + target_roi_name + "_vtx" + str(vertex_number) + "_" + str(round(focal_distance,1)) + ".surf.gii"
 
     create_surface_ellipsoid(FLHM, 5,
                                      focus_position_transform_filepath,
@@ -1142,11 +1142,11 @@ def prepare_acoustic_simulation(vertex_number,
 # Create ellipsoid (volume)
 #==============================================================================
 
-    ellipsoid_volume_output_filepath = output_path_vtx + "/focus_" + target_roi_name + "_vtx" + str(vertex_number) + ".nii.gz"
+    ellipsoid_volume_output_filepath = output_path_vtx + "/focus_" + target_roi_name + "_vtx" + str(vertex_number) + "_" + str(round(focal_distance,1)) + ".nii.gz"
 
 
     # create surface ellipsoid with smaller dimensions
-    ellipsoid_small_output_filepath = output_path_vtx + "/focus_" + target_roi_name + "_vtx" + str(vertex_number) + "_small.surf.gii"
+    ellipsoid_small_output_filepath = output_path_vtx + "/focus_" + target_roi_name + "_vtx" + str(vertex_number) + "_" + str(round(focal_distance,1)) + "_small.surf.gii"
 
     create_surface_ellipsoid(FLHM-1, 5-1,
                              focus_position_transform_filepath,
@@ -1155,12 +1155,12 @@ def prepare_acoustic_simulation(vertex_number,
 
     
     # create metric from surface
-    os.system("wb_command -surface-coordinates-to-metric {} {}".format(
+    os.system("wb_command -logging OFF -surface-coordinates-to-metric {} {}".format(
         ellipsoid_output_filepath,
         output_path_vtx + "/focus.func.gii"))
 
     # map metric to volume
-    os.system("wb_command -metric-to-volume-mapping {} {} {} {} -ribbon-constrained {} {}".format(
+    os.system("wb_command -logging OFF -metric-to-volume-mapping {} {} {} {} -ribbon-constrained {} {}".format(
         output_path_vtx + "/focus.func.gii",
         ellipsoid_output_filepath,
         t1_filepath,
@@ -1169,7 +1169,7 @@ def prepare_acoustic_simulation(vertex_number,
         ellipsoid_output_filepath))
     
     # fill holes in volume
-    os.system("wb_command -volume-fill-holes {} {}".format(
+    os.system("wb_command -logging OFF -volume-fill-holes {} {}".format(
         ellipsoid_volume_output_filepath,
         ellipsoid_volume_output_filepath))
 
@@ -1214,12 +1214,12 @@ def prepare_acoustic_simulation(vertex_number,
         '../' + target_roi_filename,
         "transducer_" + target_roi_name + "_vtx" + str(vertex_number) + ".surf.gii",
         "./transducer_" + target_roi_name + "_vtx" + str(vertex_number) + ".surf.gii",
-        "focus_" + target_roi_name + "_vtx" + str(vertex_number) + ".nii.gz",
-        "./focus_" + target_roi_name + "_vtx" + str(vertex_number) + ".nii.gz",
-        "focus_" + target_roi_name + "_vtx" + str(vertex_number) + ".surf.gii",
-        "./focus_" + target_roi_name + "_vtx" + str(vertex_number) + ".surf.gii"]
+        "focus_" + target_roi_name + "_vtx" + str(vertex_number) + "_" + str(round(focal_distance,1)) + ".nii.gz",
+        "./focus_" + target_roi_name + "_vtx" + str(vertex_number) + "_" + str(round(focal_distance,1)) + ".nii.gz",
+        "focus_" + target_roi_name + "_vtx" + str(vertex_number) + "_" + str(round(focal_distance,1)) + ".surf.gii",
+        "./focus_" + target_roi_name + "_vtx" + str(vertex_number) + "_" + str(round(focal_distance,1)) + ".surf.gii"]
 
 
     create_scene(placement_scene_template_filepath, output_path_vtx + "/scene.scene", scene_variable_names, scene_variable_values)
 
-    os.system("wb_view " + output_path_vtx + "/scene.scene > /dev/null 2>&1")
+    os.system("wb_view -logging OFF " + output_path_vtx + "/scene.scene")
