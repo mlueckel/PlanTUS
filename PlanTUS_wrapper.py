@@ -75,7 +75,9 @@ plantus_code_path =  plantus_main_folder + '/code'
 
 
 #=============================================================================
+#=============================================================================
 # Run PlanTUS
+#=============================================================================
 #=============================================================================
 import os
 import shutil
@@ -196,7 +198,7 @@ skin_skull_intersections = PlanTUS.compute_vector_mesh_intersections(skin_coordi
 
 indices_closest_skull_vertices = []
 for i in np.arange(len(skin_coordinates)):
-    try: 
+    try:
         intersection_coordinate = skin_skull_intersections[i][0]
         ED_skull_list = np.linalg.norm((skull_coordinates - intersection_coordinate), axis=1)
         indices_closest_skull_vertices.append((np.argmin(ED_skull_list)))
@@ -299,7 +301,7 @@ def read_output():
         output = process.stderr.readline()
         if output == '' and process.poll() is not None:
             break
-        
+
         if process_line:
             # Process the latest line only when a mouse click is detected
             match = pattern.search(output)
@@ -307,7 +309,7 @@ def read_output():
                 triangle_number = match.group(1)
                 triangle_number = int(triangle_number.replace(".", ""))
                 print(f"Switched vertex to triangle nearest vertex: {triangle_number}")
-                
+
                 # Ask the user if they want to generate the transducer placement
                 response = input(f"Generate transducer placement for vertex {triangle_number}? (yes/no): ").strip().lower()
                 if response == "yes":
@@ -328,7 +330,7 @@ def read_output():
                                                         placement_scene_template_filepath)
                 else:
                     print("No action taken.")
-                
+
                 # Reset the flag
                 process_line = False
 
