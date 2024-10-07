@@ -44,4 +44,10 @@ Specify the variables in the *PlanTUS_wrapper.py* script (see script for example
 
 ## 3. Select transducer position(s)
 
+![image](https://github.com/user-attachments/assets/df3d85c4-4056-4bb6-99aa-23b82feb822d)
+
+
+## 4. Evaluate transducer and (estimated) focus position
+
+## 5. Use PlanTUS outputs with acoustic simulation software
 
