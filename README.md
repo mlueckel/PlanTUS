@@ -1,6 +1,6 @@
 # PlanTUS - A tool for heuristic planning of TUS transducer placement.
 
-![image](https://github.com/user-attachments/assets/ff3850a9-2ed8-43a8-b93c-f28a9d0d7c2e) PlanTUS does not replace proper acoustic simulations. All transducer positions planned using PlanTUS should should always be validated using acoustic simulations! ![image](https://github.com/user-attachments/assets/a96f3d12-0160-4de4-89ae-0e0c9241059b)
+<img src="https://github.com/user-attachments/assets/ff3850a9-2ed8-43a8-b93c-f28a9d0d7c2e" width="20" /> **PlanTUS does not replace proper acoustic simulations. All transducer positions planned using PlanTUS should should always be validated using acoustic simulations!** <img src="https://github.com/user-attachments/assets/ff3850a9-2ed8-43a8-b93c-f28a9d0d7c2e" width="20"
 
 
 
