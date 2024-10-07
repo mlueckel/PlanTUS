@@ -70,12 +70,12 @@ Based on the subject-specific anatomical MR image and mask of the target region,
 
 These metrics will be visualized in Connectome Workbench on the 3D-reconstructed head surface:
 
-<img src="https://github.com/user-attachments/assets/df3d85c4-4056-4bb6-99aa-23b82feb822d" width="600" />
+<img src="https://github.com/user-attachments/assets/df3d85c4-4056-4bb6-99aa-23b82feb822d" width="800" />
 
 
 To select a potential transducer placement, simply click on the head surface where you would like to place the transducer. A small white sphere will appear at the respective position on the head surface, marking the selected position of the transducer center. The volume view (right) then allows you to check the intersection between the target region and an idealized acoustic beam trajectory (straight line) going from that position into the brain.
 
-<img src="https://github.com/user-attachments/assets/cf6c9517-e4d4-444f-97b5-d49475feafd9" width="600" />
+<img src="https://github.com/user-attachments/assets/cf6c9517-e4d4-444f-97b5-d49475feafd9" width="800" />
 
 You will be asked, if you want to generate a transducer placement for the selected position. If you select "No", nothing happens and you can go on selecting other positions. If you select "Yes", a new window pops up (see below).
 
