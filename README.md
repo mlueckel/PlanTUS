@@ -20,7 +20,7 @@ PlanTUS helps users of transcranial ultrasound stimulation (TUS) to interactivel
 ### What you need
 In order to use PlanTUS, you need the following files:
 - T1-weighted (T1w) MR image of your participant's head (.nii file)
-- (optinally: T2-weighted (T2w) MR image of your participant's head (.nii file))
+- (optionally: T2-weighted (T2w) MR image of your participant's head (.nii file))
 - Mask of your region of interest (co-registered to/in the same space as your participant's T1 image; .nii file)
   
 ### Charm
