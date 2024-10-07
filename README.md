@@ -28,6 +28,7 @@ Make sure to run the SimNIBS charm pipeline (https://simnibs.github.io/simnibs/b
 
 **Note:** If you want to use the PlanTUS output (i.e., the planned transducer position) for acoustic simulations in **k-Plan** (https://k-plan.io/), make sure to linearly co-register your participant's T1w MR image to a suitable MNI template (to get an image with an affine matrix that has all off-diaginal elements set to 0) and set the left, posterior, inferior corner of the image to (0,0,0). You can use the Python script that is provided in this repository.
 
+
 ## 1. Specify variables
 Specify the variables in the *PlanTUS_wrapper.py* script (see script for example values).
 
@@ -48,8 +49,6 @@ Specify the variables in the *PlanTUS_wrapper.py* script (see script for example
 
 ## 2. Run the *PlanTUS_wrapper.py* script
 
-## 3. Select transducer position(s)
-
 Based on the subject-specific anatomical MR image and mask of the target region, PlanTUS generates useful metrics that help you to intuitively evaluate potential transducer positions:
 - **Distance [in mm] between skin surface and target region.** A black outline indicates the restricted area on the head surface (see screenshot below), from which you would be able to reach the target brain region, given the usually limited focal depth of your transducer. In practice, it therefore only makes sense to place the transducer somewhere within this area.
 <img src="https://github.com/user-attachments/assets/15fa5cb8-0c5b-4d34-ab14-d622c217536e" width="200" />
@@ -66,8 +65,9 @@ Based on the subject-specific anatomical MR image and mask of the target region,
 <img src="https://github.com/user-attachments/assets/ee09ef52-18f0-4045-86f1-64d3c3aaf0c7" width="200" />
 
 
+## 3. Select transducer position(s)
 
-These metrics will be visualized in **Connectome Workbench** on the 3D-reconstructed head surface:
+The aforementioned metrics will be visualized in **Connectome Workbench** on the 3D-reconstructed head surface:
 
 <img src="https://github.com/user-attachments/assets/df3d85c4-4056-4bb6-99aa-23b82feb822d" width="800" />
 
