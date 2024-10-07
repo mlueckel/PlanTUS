@@ -85,12 +85,12 @@ After clicking on a position, you will be asked if you want to generate a transd
 
 After selecting a position, a new Connectome Workbench window pops up that shows the resulting transducer placement (left) and a simplified representation of the expected acoustic focus (red outline) overlaid on the target mask (green) and anatomical MR image (volume view on the right).
 
-<img src="https://github.com/user-attachments/assets/44b4f69a-df07-47eb-8858-e0da64af2172" width="600" />
+<img src="https://github.com/user-attachments/assets/44b4f69a-df07-47eb-8858-e0da64af2172" width="800" />
 
 
 The oblique volume view (right) will help you to evaluate the expected on- vs. off-target stimulation in terms of overlap between the simplified acoustic focus and the target region – which is also quantified and reported by planTUS (to be implemented).
 
-<img src="https://github.com/user-attachments/assets/72fd9a0a-f7dc-461f-82db-82ea601e2751" width="600" />
+<img src="https://github.com/user-attachments/assets/72fd9a0a-f7dc-461f-82db-82ea601e2751" width="800" />
 
 
 
@@ -110,7 +110,7 @@ PlanTUS outputs several files for further use with different…
 
 **k-Plan example**: Using the PlanTUS output files, the selected transducer placement can be easily imported into the k-Plan software for validating the heuristically selected transducer placement with proper acoustic simulations.
 
-<img src="https://github.com/user-attachments/assets/ef43e905-1466-4dc3-9e69-ccefa266d8fa" width="600" />
+<img src="https://github.com/user-attachments/assets/ef43e905-1466-4dc3-9e69-ccefa266d8fa" width="800" />
 
 
 
@@ -118,11 +118,11 @@ PlanTUS outputs several files for further use with different…
 
 Eventually, acoustic simulation results (e.g., acoustic pressure maps) can be loaded and evaluated in the same environment (Connectome Workbench). White outlines in the volume view (right) indicate the borders of the target region.
 
-<img src="https://github.com/user-attachments/assets/77ef1860-d809-4b43-a60a-c712257150ee" width="600" />
+<img src="https://github.com/user-attachments/assets/77ef1860-d809-4b43-a60a-c712257150ee" width="800" />
 
 
 Again, the oblique volume view (right) can help you to evaluate on- vs. off-target stimulation in terms of overlap between the simulated acoustic focus and the target region (indicated by white outline) – which can also be quantified by planTUS (to be implemented).
 
-<img src="https://github.com/user-attachments/assets/b1502848-d858-41ee-93a7-7cc3ab297e0b" width="600" />
+<img src="https://github.com/user-attachments/assets/b1502848-d858-41ee-93a7-7cc3ab297e0b" width="800" />
 
 
