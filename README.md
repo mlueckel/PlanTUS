@@ -51,15 +51,21 @@ Specify the variables in the *PlanTUS_wrapper.py* script (see script for example
 ## 3. Select transducer position(s)
 
 Based on the subject-specific anatomical MR image and mask of the target region, PlanTUS generates useful metrics, visualized in Connectome Workbench on the 3D-reconstructed head surface, that help you to intuitively evaluate potential transducer positions:
-- **Distance [in mm] between skin surface and target region.** A black outline indicated the restricted area on the head surface, from which you would be able to reach the target brain region, given the usually limited focal depth of your transducer. I.e., it only makes sense to place the transducer somewhere within this area.
+- **Distance [in mm] between skin surface and target region.** A black outline indicated the restricted area on the head surface, from which you would be able to reach the target brain region, given the usually limited focal depth of your transducer. In practice, it therefore only makes sense to place the transducer somewhere within this area.
 <img src="https://github.com/user-attachments/assets/15fa5cb8-0c5b-4d34-ab14-d622c217536e" width="200" />
 
-- **Intersection [in mm] between the target region and an idealized acoustic beam trajectory.** The acoustic beam trajectory is modelled as a simple perpendicular line going perpendicular form the head surface into the brain.
+- **Intersection [in mm] between the target region and an idealized acoustic beam trajectory.** In practive, you would want this intersection to be as large as possible. Note that the acoustic beam trajectory is modelled as a simple perpendicular line going perpendicular form the head surface into the brain. This is, of course, a very simplified assumption and does not take into account, e.g., effects of skull on the ultrasound trajectory (e.g., aberrations). Hence, validation using more realistic acoustic simulations is necessary. 
 <img src="https://github.com/user-attachments/assets/d6bdfd06-3ff7-4094-9321-f8f34641d80c" width="200" />
 <img src="https://github.com/user-attachments/assets/b6747049-5366-4cfd-9550-d43431a113b7" width="200" />
 
 
-- **Transducer tilt angle [in degrees] required to make the idealized beam trajectory intersect with the target region.**
+- **Transducer tilt angle [in degrees] required to make the idealized beam trajectory intersect with the target region.** In practice, this angle should be as small as possible, to prevent (1) difficulties with coupling and fixating the transducer to the head surface and (2) strong reflections of the ultrasound.
+<img src="https://github.com/user-attachments/assets/5f331eaf-b1d7-48aa-bf0d-d5b1f946078b" width="200" />
+
+- **Angle [in degrees] between the normal vectors of the skin and skull surface.** In practice, you would prefer an area where there is as little discrepancy between the skin and skull normal as possible. If the transducer is then placed tangential to the skin surface, this will theoretically minimize reflections of the ultrasound by the skull, as the ultrasound will hit the skull in a 90 degrees angle.
+<img src="https://github.com/user-attachments/assets/988faa36-3083-4b00-bdf0-f97706bdaf09" width="200" />
+<img src="https://github.com/user-attachments/assets/ee09ef52-18f0-4045-86f1-64d3c3aaf0c7" width="200" />
+
 
 
 <img src="https://github.com/user-attachments/assets/df3d85c4-4056-4bb6-99aa-23b82feb822d" width="600" />
