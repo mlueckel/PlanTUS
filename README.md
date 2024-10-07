@@ -46,30 +46,30 @@ Specify the variables in the *PlanTUS_wrapper.py* script (see script for example
 
 <img src="https://github.com/user-attachments/assets/df3d85c4-4056-4bb6-99aa-23b82feb822d" width="600" />
 
-![image](https://github.com/user-attachments/assets/cf6c9517-e4d4-444f-97b5-d49475feafd9)
+<img src="https://github.com/user-attachments/assets/cf6c9517-e4d4-444f-97b5-d49475feafd9" width="600" />
 
 
 
 ## 4. Evaluate transducer and (estimated) focus position
 
-![image](https://github.com/user-attachments/assets/44b4f69a-df07-47eb-8858-e0da64af2172)
+<img src="https://github.com/user-attachments/assets/44b4f69a-df07-47eb-8858-e0da64af2172" width="600" />
 
-![image](https://github.com/user-attachments/assets/72fd9a0a-f7dc-461f-82db-82ea601e2751)
+<img src="https://github.com/user-attachments/assets/72fd9a0a-f7dc-461f-82db-82ea601e2751" width="600" />
 
 
 
 ## 5. Use PlanTUS outputs with acoustic simulation software
 
-![image](https://github.com/user-attachments/assets/12315d1b-24ba-42bb-ab98-0d6b4bde651f)
+<img src="https://github.com/user-attachments/assets/12315d1b-24ba-42bb-ab98-0d6b4bde651f" width="600" />
 
-![image](https://github.com/user-attachments/assets/ef43e905-1466-4dc3-9e69-ccefa266d8fa)
+<img src="https://github.com/user-attachments/assets/ef43e905-1466-4dc3-9e69-ccefa266d8fa" width="600" />
 
 
 
 ## 6. Review simulation results
 
-![image](https://github.com/user-attachments/assets/77ef1860-d809-4b43-a60a-c712257150ee)
+<img src="https://github.com/user-attachments/assets/77ef1860-d809-4b43-a60a-c712257150ee" width="600" />
 
-![image](https://github.com/user-attachments/assets/b1502848-d858-41ee-93a7-7cc3ab297e0b)
+<img src="https://github.com/user-attachments/assets/b1502848-d858-41ee-93a7-7cc3ab297e0b" width="600" />
 
 
