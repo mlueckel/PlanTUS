@@ -17,9 +17,9 @@
 
 ### What you need
 In order to use PlanTUS, you need the following files:
-- T1-weighted (T1w) MR image of your participant's head
-- (optinally: T2-weighted (T2w) MR image of your participant's head)
-- Mask of your region of interest (co-registered to/in the same space as your participant's T1 image)
+- T1-weighted (T1w) MR image of your participant's head (.nii file)
+- (optinally: T2-weighted (T2w) MR image of your participant's head (.nii file))
+- Mask of your region of interest (co-registered to/in the same space as your participant's T1 image; .nii file)
   
 ### Charm
 Make sure to run the SimNIBS charm pipeline (https://simnibs.github.io/simnibs/build/html/documentation/command_line/charm.html) on your participant's T1w (and T2w) MR image.
