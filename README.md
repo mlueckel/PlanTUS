@@ -1,5 +1,7 @@
 # PlanTUS - A tool for heuristic planning of TUS transducer placements
 
+PlanTUS helps users of transcranial ultrasound stimulation (TUS) to interactively and heuristically select the most promising transducer placement(s) for sonication of a target brain region of interest in a given individual.
+
 <img src="https://github.com/user-attachments/assets/ff3850a9-2ed8-43a8-b93c-f28a9d0d7c2e" width="20" /> **PlanTUS does not replace acoustic simulations. Transducer positions selected using PlanTUS should always be validated using proper acoustic simulations!** <img src="https://github.com/user-attachments/assets/ff3850a9-2ed8-43a8-b93c-f28a9d0d7c2e" width="20" />
 
 
