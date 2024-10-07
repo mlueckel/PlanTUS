@@ -1,8 +1,8 @@
 # PlanTUS - A tool for heuristic planning of TUS transducer placements
 
-PlanTUS helps users of transcranial ultrasound stimulation (TUS) to interactively and heuristically select the most promising transducer placement(s) for sonication of a target brain region of interest in a given individual.
+PlanTUS helps users of transcranial ultrasound stimulation (TUS) to interactively and heuristically select the most promising transducer placement(s) for sonication of a specific target region of interest in a given individual.
 
-<img src="https://github.com/user-attachments/assets/ff3850a9-2ed8-43a8-b93c-f28a9d0d7c2e" width="20" /> **PlanTUS does not replace acoustic simulations. Transducer positions selected using PlanTUS should always be validated using proper acoustic simulations!** <img src="https://github.com/user-attachments/assets/ff3850a9-2ed8-43a8-b93c-f28a9d0d7c2e" width="20" />
+<img src="https://github.com/user-attachments/assets/ff3850a9-2ed8-43a8-b93c-f28a9d0d7c2e" width="20" /> **PlanTUS is supposed to inform acoustic simulations, but does not replace acoustic simulations. Transducer positions selected using PlanTUS should always be validated using proper acoustic simulations!** <img src="https://github.com/user-attachments/assets/ff3850a9-2ed8-43a8-b93c-f28a9d0d7c2e" width="20" />
 
 
 
@@ -51,7 +51,8 @@ Specify the variables in the *PlanTUS_wrapper.py* script (see script for example
 ## 3. Select transducer position(s)
 
 Based on the subject-specific anatomical MR image and mask of the target region, PlanTUS generates useful metrics, visualized in Connectome Workbench on the 3D-reconstructed head surface, that help you to intuitively evaluate potential transducer positions:
-- **Distance [in mm] between skin surface and target region.** The focal depth of TUS transducers is limited. Therefore, target regions are only reachable from restricted areas on the scalp. This area is indicated 
+- **Distance [in mm] between skin surface and target region.** A black outline indicated the restricted area on the head surface, from which you would be able to reach the target brain region, given the usually limited focal depth of your transducer. I.e., it only makes sense to place the transducer somewhere within this area.
+- 
 
 
 <img src="https://github.com/user-attachments/assets/df3d85c4-4056-4bb6-99aa-23b82feb822d" width="600" />
