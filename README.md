@@ -44,7 +44,7 @@ Specify the variables in the *PlanTUS_wrapper.py* script (see script for example
 
 ## 3. Select transducer position(s)
 
-<img src="https://github.com/user-attachments/assets/df3d85c4-4056-4bb6-99aa-23b82feb822d" width="200" />
+<img src="https://github.com/user-attachments/assets/df3d85c4-4056-4bb6-99aa-23b82feb822d" width="600" />
 
 ![image](https://github.com/user-attachments/assets/cf6c9517-e4d4-444f-97b5-d49475feafd9)
 
