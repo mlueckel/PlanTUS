@@ -98,11 +98,11 @@ The oblique volume view (right) will help you to evaluate the expected on- vs. o
 
 PlanTUS outputs several files for further use with different…
 
-**acoustic simulation software** – for validation of the selected transducer placement(s).
+**acoustic simulation software** – for validation of the selected transducer placement(s).  
 <img src="https://github.com/user-attachments/assets/12315d1b-24ba-42bb-ab98-0d6b4bde651f" width="200" />
 
 
-**neuronavigation software** – for MR-guided navigation of the transducer to the selected position(s).
+**neuronavigation software** – for MR-guided navigation of the transducer to the selected position(s).  
 <img src="https://github.com/user-attachments/assets/540e9535-a9a4-4ea4-ac2a-0eebd15982ac" width="200" />
 
 
