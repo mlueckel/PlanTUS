@@ -60,7 +60,7 @@ Specify the variables in the *PlanTUS_wrapper.py* script (see script for example
 
 ## 5. Use PlanTUS outputs with acoustic simulation software
 
-<img src="https://github.com/user-attachments/assets/12315d1b-24ba-42bb-ab98-0d6b4bde651f" width="600" />
+<img src="https://github.com/user-attachments/assets/12315d1b-24ba-42bb-ab98-0d6b4bde651f" width="200" />
 
 <img src="https://github.com/user-attachments/assets/ef43e905-1466-4dc3-9e69-ccefa266d8fa" width="600" />
 
