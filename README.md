@@ -9,7 +9,7 @@
 
 # Instructions
 
-## Before using PlanTUS
+## 0. Before using PlanTUS
 
 ### What you need
 In order to use PlanTUS, you need the following files:
@@ -22,8 +22,8 @@ Make sure to run the SimNIBS charm pipeline (https://simnibs.github.io/simnibs/b
 
 **Note:** If you want to use the PlanTUS output (i.e., the planned transducer position) in k-Plan, make sure to linearly co-register your participant's T1w MR image to a suitable MNI template and set the left, posterior, inferior corner of the image to (0,0,0). You can use the Python script that is provided in this repository.
 
-## Specify variables
-Specify the variables in the PlanTUS_wrapper.py script.
+## 1. Specify variables
+Specify the variables in the *PlanTUS_wrapper.py* script (see script for example values).
 
 **Subject-specific variables**
 - *t1_filepath*: Path to T1 image (output of SimNIBS' charm).
@@ -38,5 +38,10 @@ Specify the variables in the PlanTUS_wrapper.py script.
 - *plane_offset*: Offset between radiating surface and exit plane of transducer (in mm).
 - *additional_offset*: Additional offset between skin and exit plane of transducer (in mm; e.g., due to addtional gel/silicone pad).
 - *focal_distance_list*, *flhm_list*: Focal distance and corresponding FLHM values (both in mm) according to, e.g., calibration report.
+
+
+## 2. Run the *PlanTUS_wrapper.py* script
+
+## 3. Select transducer position(s)
 
 
