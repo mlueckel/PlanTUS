@@ -1,4 +1,4 @@
-# PlanTUS - A tool for heuristic planning of TUS transducer placements
+![image](https://github.com/user-attachments/assets/efa58d7e-36d0-4c5f-a378-d191c6d13250)# PlanTUS - A tool for heuristic planning of TUS transducer placements
 
 PlanTUS helps users of transcranial ultrasound stimulation (TUS) to interactively and heuristically select the most promising transducer placement(s) for sonication of a target brain region of interest in a given individual.
 
@@ -24,9 +24,9 @@ In order to use PlanTUS, you need the following files:
 - Mask of your region of interest (co-registered to/in the same space as your participant's T1 image; .nii file)
   
 ### Charm
-Make sure to run the SimNIBS charm pipeline (https://simnibs.github.io/simnibs/build/html/documentation/command_line/charm.html) on your participant's T1w (and T2w) MR image before using PlanTUS.
+Make sure to run the SimNIBS charm pipeline (https://simnibs.github.io/simnibs/build/html/documentation/command_line/charm.html) on your participant's T1w (and T2w) MR image before using PlanTUS. Charm segments the head into different tissue types. This segmentation is used to extract a head and skull mask, from which we generate a 3D model of the head and skull. 
 
-**Note:** If you want to use the PlanTUS output (i.e., the planned transducer position) for acoustic simulations in in **k-Plan** (https://k-plan.io/), make sure to linearly co-register your participant's T1w MR image to a suitable MNI template (to get an image with an affine matrix that has all off-diaginal elements set to 0) and set the left, posterior, inferior corner of the image to (0,0,0). You can use the Python script that is provided in this repository.
+**Note:** If you want to use the PlanTUS output (i.e., the planned transducer position) for acoustic simulations in **k-Plan** (https://k-plan.io/), make sure to linearly co-register your participant's T1w MR image to a suitable MNI template (to get an image with an affine matrix that has all off-diaginal elements set to 0) and set the left, posterior, inferior corner of the image to (0,0,0). You can use the Python script that is provided in this repository.
 
 ## 1. Specify variables
 Specify the variables in the *PlanTUS_wrapper.py* script (see script for example values).
@@ -50,7 +50,9 @@ Specify the variables in the *PlanTUS_wrapper.py* script (see script for example
 
 ## 3. Select transducer position(s)
 
-Based on a subject-specific anatomical MR image and mask of the target region, PlanTUS generates useful metrics (see image for details), visualized in Connectome Workbench on the 3D-reconstructed head surface, that help you to intuitively evaluate potential transducer positions.
+Based on the subject-specific anatomical MR image and mask of the target region, PlanTUS generates useful metrics, visualized in Connectome Workbench on the 3D-reconstructed head surface, that help you to intuitively evaluate potential transducer positions:
+- **Distance [in mm] between skin surface and target region.** The focal depth of TUS transducers is limited. Therefore, target regions are only reachable from restricted areas on the scalp. This area is indicated 
+
 
 <img src="https://github.com/user-attachments/assets/df3d85c4-4056-4bb6-99aa-23b82feb822d" width="600" />
 
