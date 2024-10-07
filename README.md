@@ -52,9 +52,13 @@ Specify the variables in the *PlanTUS_wrapper.py* script (see script for example
 
 Based on the subject-specific anatomical MR image and mask of the target region, PlanTUS generates useful metrics, visualized in Connectome Workbench on the 3D-reconstructed head surface, that help you to intuitively evaluate potential transducer positions:
 - **Distance [in mm] between skin surface and target region.** A black outline indicated the restricted area on the head surface, from which you would be able to reach the target brain region, given the usually limited focal depth of your transducer. I.e., it only makes sense to place the transducer somewhere within this area.
-<img src="https://github.com/user-attachments/assets/15fa5cb8-0c5b-4d34-ab14-d622c217536e" width="100" />
+<img src="https://github.com/user-attachments/assets/15fa5cb8-0c5b-4d34-ab14-d622c217536e" width="200" />
 
 - **Intersection [in mm] between the target region and an idealized acoustic beam trajectory.** The acoustic beam trajectory is modelled as a simple perpendicular line going perpendicular form the head surface into the brain.
+<img src="https://github.com/user-attachments/assets/d6bdfd06-3ff7-4094-9321-f8f34641d80c" width="200" />
+<img src="https://github.com/user-attachments/assets/b6747049-5366-4cfd-9550-d43431a113b7" width="200" />
+
+
 - **Transducer tilt angle [in degrees] required to make the idealized beam trajectory intersect with the target region.**
 
 
