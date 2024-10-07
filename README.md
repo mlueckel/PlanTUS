@@ -51,44 +51,44 @@ Specify the variables in the *PlanTUS_wrapper.py* script (see script for example
 ## 3. Select transducer position(s)
 
 Based on the subject-specific anatomical MR image and mask of the target region, PlanTUS generates useful metrics that help you to intuitively evaluate potential transducer positions:
-- **Distance [in mm] between skin surface and target region.** A black outline indicated the restricted area on the head surface, from which you would be able to reach the target brain region, given the usually limited focal depth of your transducer. In practice, it therefore only makes sense to place the transducer somewhere within this area.
+- **Distance [in mm] between skin surface and target region.** A black outline indicates the restricted area on the head surface (see screenshot below), from which you would be able to reach the target brain region, given the usually limited focal depth of your transducer. In practice, it therefore only makes sense to place the transducer somewhere within this area.
 <img src="https://github.com/user-attachments/assets/15fa5cb8-0c5b-4d34-ab14-d622c217536e" width="200" />
 
-- **Intersection [in mm] between the target region and an idealized acoustic beam trajectory.** In practive, you would want this intersection to be as large as possible. Note that the acoustic beam trajectory is modelled as a simple perpendicular line going perpendicular form the head surface into the brain. This is, of course, a very simplified assumption and does not take into account, e.g., effects of skull on the ultrasound trajectory (e.g., aberrations). Hence, validation using more realistic acoustic simulations is necessary. 
+- **Intersection [in mm] between the target region and an idealized acoustic beam trajectory.** In practice, you would want this intersection to be as large as possible. Note that the acoustic beam trajectory is modelled as a simple straight line going perpendicular form the head surface into the brain. This is, of course, a very simplified assumption and does not take into account, e.g., effects of skull on the ultrasound trajectory (e.g., aberrations). Hence, validation using more realistic acoustic simulations is necessary. 
 <img src="https://github.com/user-attachments/assets/d6bdfd06-3ff7-4094-9321-f8f34641d80c" width="200" />
 <img src="https://github.com/user-attachments/assets/b6747049-5366-4cfd-9550-d43431a113b7" width="200" />
-
 
 - **Transducer tilt angle [in degrees] required to make the idealized beam trajectory intersect with the target region.** In practice, this angle should be as small as possible, to prevent (1) difficulties with coupling and fixating the transducer to the head surface and (2) strong reflections of the ultrasound.
 <img src="https://github.com/user-attachments/assets/5f331eaf-b1d7-48aa-bf0d-d5b1f946078b" width="200" />
 
-- **Angle [in degrees] between the normal vectors of the skin and skull surface.** In practice, you would prefer an area where there is as little discrepancy between the skin and skull normal as possible. If the transducer is then placed tangential to the skin surface, this will theoretically minimize reflections of the ultrasound by the skull, as the ultrasound will hit the skull in a 90 degrees angle.
+- **Angle [in degrees] between the normal vectors of the skin and skull surface (i.e., angle of incidence).** In practice, an area with as little discrepancy between the skin and skull normal as possible is preferable for transducer placement to minimize reflections of the ultrasound by the skull.
 <img src="https://github.com/user-attachments/assets/988faa36-3083-4b00-bdf0-f97706bdaf09" width="200" />
 <img src="https://github.com/user-attachments/assets/ee09ef52-18f0-4045-86f1-64d3c3aaf0c7" width="200" />
 
 
 
-These metrics will be visualized in Connectome Workbench on the 3D-reconstructed head surface:
+These metrics will be visualized in **Connectome Workbench** on the 3D-reconstructed head surface:
 
 <img src="https://github.com/user-attachments/assets/df3d85c4-4056-4bb6-99aa-23b82feb822d" width="800" />
 
+Note that PlanTUS also automatically identifies no-go or avoidance regions (grey areas on the head surface) where placing a transducer is not possible (e.g., around the ears, eyes, or nose, or above and around air-filled cavities/sinuses).
 
-To select a potential transducer placement, simply click on the head surface where you would like to place the transducer. A small white sphere will appear at the respective position on the head surface, marking the selected position of the transducer center. The volume view (right) then allows you to check the intersection between the target region and an idealized acoustic beam trajectory (straight line) going from that position into the brain.
+To select a potential transducer placement, simply click on the head surface wherever you would like to place the transducer. A small white sphere will appear at the respective position, marking the position of the transducer center on the head surface. The volume view (right) then allows you to check the intersection between the target region and an idealized acoustic beam trajectory (blue/green straight line) going from that position into the brain.
 
 <img src="https://github.com/user-attachments/assets/cf6c9517-e4d4-444f-97b5-d49475feafd9" width="800" />
 
-You will be asked, if you want to generate a transducer placement for the selected position. If you select "No", nothing happens and you can go on selecting other positions. If you select "Yes", a new window pops up (see below).
+After clicking on a position, you will be asked if you want to generate a transducer placement for the selected position. If you select "No", nothing happens and you can continue selecting other positions. If you select "Yes", a new window pops up (see below).
 
 
 
 ## 4. Evaluate transducer and (estimated) focus position
 
-After selecting a position, a new window pops up that shows the resulting transducer placement (left) and a simplified representation of the expected acoustic focus (red outline) overlaid on the target mask (green) and anatomical MR image (volume view on the right).
+After selecting a position, a new Connectome Workbench window pops up that shows the resulting transducer placement (left) and a simplified representation of the expected acoustic focus (red outline) overlaid on the target mask (green) and anatomical MR image (volume view on the right).
 
 <img src="https://github.com/user-attachments/assets/44b4f69a-df07-47eb-8858-e0da64af2172" width="600" />
 
 
-The oblique volume view (right) will help you to evaluate the expected on- vs. off-target stimulation in terms of overlap between the simplified acoustic focus and the target region – which is also quantified and reported by planTUS.
+The oblique volume view (right) will help you to evaluate the expected on- vs. off-target stimulation in terms of overlap between the simplified acoustic focus and the target region – which is also quantified and reported by planTUS (to be implemented).
 
 <img src="https://github.com/user-attachments/assets/72fd9a0a-f7dc-461f-82db-82ea601e2751" width="600" />
 
@@ -96,16 +96,19 @@ The oblique volume view (right) will help you to evaluate the expected on- vs. o
 
 ## 5. Use PlanTUS outputs with acoustic simulation software
 
-planTUS outputs several files for further use with different…
+PlanTUS outputs several files for further use with different…
 
-acoustic simulation software – for validation of the selected transducer placement(s).
-
-neuronavigation software – for MR-guided navigation of the transducer to the selected position(s).
-
+**acoustic simulation software** – for validation of the selected transducer placement(s).
 <img src="https://github.com/user-attachments/assets/12315d1b-24ba-42bb-ab98-0d6b4bde651f" width="200" />
 
 
-k-Plan example: Using the planTUS output files, the selected transducer placement can be easily imported into the k-Plan software for validating the heuristically selected transducer placement with proper acoustic simulations.
+**neuronavigation software** – for MR-guided navigation of the transducer to the selected position(s).
+<img src="https://github.com/user-attachments/assets/540e9535-a9a4-4ea4-ac2a-0eebd15982ac" width="200" />
+
+
+
+
+**k-Plan example**: Using the PlanTUS output files, the selected transducer placement can be easily imported into the k-Plan software for validating the heuristically selected transducer placement with proper acoustic simulations.
 
 <img src="https://github.com/user-attachments/assets/ef43e905-1466-4dc3-9e69-ccefa266d8fa" width="600" />
 
@@ -113,12 +116,12 @@ k-Plan example: Using the planTUS output files, the selected transducer placemen
 
 ## 6. Review simulation results
 
-Eventually, acoustic simulation results (e.g., acoustic pressure maps) can be loaded and evaluated in the same environment. White outlines in the volume view (right) indicate the borders of the target region.
+Eventually, acoustic simulation results (e.g., acoustic pressure maps) can be loaded and evaluated in the same environment (Connectome Workbench). White outlines in the volume view (right) indicate the borders of the target region.
 
 <img src="https://github.com/user-attachments/assets/77ef1860-d809-4b43-a60a-c712257150ee" width="600" />
 
 
-Again, the oblique volume view (right) can help you to evaluate on- vs. off-target stimulation in terms of overlap between the simulated acoustic focus and the target region (indicated by white outline) – which can also be quantified by planTUS.
+Again, the oblique volume view (right) can help you to evaluate on- vs. off-target stimulation in terms of overlap between the simulated acoustic focus and the target region (indicated by white outline) – which can also be quantified by planTUS (to be implemented).
 
 <img src="https://github.com/user-attachments/assets/b1502848-d858-41ee-93a7-7cc3ab297e0b" width="600" />
 
