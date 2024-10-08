@@ -64,6 +64,7 @@ Based on the subject-specific anatomical MR image and mask of the target region,
 <img src="https://github.com/user-attachments/assets/988faa36-3083-4b00-bdf0-f97706bdaf09" width="200" />
 <img src="https://github.com/user-attachments/assets/ee09ef52-18f0-4045-86f1-64d3c3aaf0c7" width="200" />
 
+Note that PlanTUS also automatically identifies no-go or avoidance regions (grey areas on the head surface) where placing a transducer is not possible (e.g., around the ears, eyes, or nose, or above and around air-filled cavities/sinuses).
 
 ## 3. Select transducer position(s)
 
@@ -71,7 +72,6 @@ The aforementioned metrics will be visualized in **Connectome Workbench** on the
 
 <img src="https://github.com/user-attachments/assets/df3d85c4-4056-4bb6-99aa-23b82feb822d" width="800" />
 
-Note that PlanTUS also automatically identifies no-go or avoidance regions (grey areas on the head surface) where placing a transducer is not possible (e.g., around the ears, eyes, or nose, or above and around air-filled cavities/sinuses).
 
 To select a potential transducer placement, simply click on the head surface wherever you would like to place the transducer. A small white sphere will appear at the respective position, marking the position of the transducer center on the head surface. The volume view (right) then allows you to check the intersection between the target region and an idealized acoustic beam trajectory (blue/green straight line) going from that position into the brain.
 
