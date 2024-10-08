@@ -43,7 +43,7 @@ Specify the variables in the *PlanTUS_wrapper.py* script (see script for example
 - *transducer_diameter*: Transducer aperture diameter (in mm).
 - *max_angle*: Maximum allowed angle for tilting of TUS transducer (in degrees).
 - *plane_offset*: Offset between radiating surface and exit plane of transducer (in mm).
-- *additional_offset*: Additional offset between skin and exit plane of transducer (in mm; e.g., due to addtional gel/silicone pad).
+- *additional_offset*: Additional offset between skin and exit plane of transducer (in mm; e.g., due to addtional gel/silicone pad or other coupling media).
 - *focal_distance_list*, *flhm_list*: Focal distance and corresponding FLHM values (both in mm) according to, e.g., calibration report.
 
 
