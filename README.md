@@ -26,7 +26,7 @@ In order to use PlanTUS, you need the following files:
 ### Charm
 Make sure to run the SimNIBS charm pipeline (https://simnibs.github.io/simnibs/build/html/documentation/command_line/charm.html) on your participant's T1w (and T2w) MR image before using PlanTUS. Charm segments the head into different tissue types. This segmentation is used to extract a head and skull mask, from which we generate a 3D model of the head and skull. 
 
-**Note:** If you want to use the PlanTUS output (i.e., the planned transducer position) for acoustic simulations in **k-Plan** (https://k-plan.io/), make sure to linearly co-register your participant's T1w MR image to a suitable MNI template (to get an image with an affine matrix that has all off-diaginal elements set to 0) and set the left, posterior, inferior corner of the image to (0,0,0). You can use the Python script that is provided in this repository.
+**Note:** If you want to use the PlanTUS output (i.e., the planned transducer position) for acoustic simulations in **k-Plan** (https://k-plan.io/), make sure to linearly co-register your participant's T1w MR image to a suitable MNI template (to get an image with an affine matrix that has all off-diaginal elements set to 0) and set the left, posterior, inferior corner of the image to (0,0,0) *before running charm*. You can use the Python script that is provided in this repository.
 
 
 ## 1. Specify variables
