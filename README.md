@@ -73,7 +73,7 @@ The aforementioned metrics will be visualized in **Connectome Workbench** on the
 <img src="https://github.com/user-attachments/assets/df3d85c4-4056-4bb6-99aa-23b82feb822d" width="800" />
 
 
-To select a potential transducer placement, simply click on the head surface wherever you would like to place the transducer. A small white sphere will appear at the respective position, marking the position of the transducer center on the head surface. The volume view (right) then allows you to check the intersection between the target region and an idealized acoustic beam trajectory (blue/green straight line) going from that position into the brain.
+To select a potential transducer placement, simply click on the head surface wherever you would like to place the transducer. A small white sphere will appear at the respective position, marking the position of the transducer center on the head surface. The volume view (right) then allows you to check the intersection between the target region and an idealized acoustic beam trajectory (blue/green straight line) going from that position into the brain (oblique viewing option).
 
 <img src="https://github.com/user-attachments/assets/cf6c9517-e4d4-444f-97b5-d49475feafd9" width="800" />
 
