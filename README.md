@@ -88,7 +88,7 @@ After selecting a position, a new Connectome Workbench window pops up that shows
 <img src="https://github.com/user-attachments/assets/44b4f69a-df07-47eb-8858-e0da64af2172" width="800" />
 
 
-The oblique volume view (right) will help you to evaluate the expected on- vs. off-target stimulation in terms of overlap between the simplified acoustic focus and the target region – which is also quantified and reported by planTUS (to be implemented).
+The oblique volume view (right) will help you to evaluate the expected on- vs. off-target stimulation in terms of overlap between the simplified acoustic focus and the target region – which is also quantified and reported by planTUS (*to be implemented*).
 
 <img src="https://github.com/user-attachments/assets/72fd9a0a-f7dc-461f-82db-82ea601e2751" width="800" />
 
@@ -121,7 +121,7 @@ Eventually, acoustic simulation results (e.g., acoustic pressure maps) can be lo
 <img src="https://github.com/user-attachments/assets/77ef1860-d809-4b43-a60a-c712257150ee" width="800" />
 
 
-Again, the oblique volume view (right) can help you to evaluate on- vs. off-target stimulation in terms of overlap between the simulated acoustic focus and the target region (indicated by white outline) – which can also be quantified by planTUS (to be implemented).
+Again, the oblique volume view (right) can help you to evaluate on- vs. off-target stimulation in terms of overlap between the simulated acoustic focus and the target region (indicated by white outline) – which can also be quantified by planTUS (*to be implemented*).
 
 <img src="https://github.com/user-attachments/assets/b1502848-d858-41ee-93a7-7cc3ab297e0b" width="800" />
 
