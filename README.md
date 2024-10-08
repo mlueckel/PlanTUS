@@ -64,7 +64,7 @@ Based on the subject-specific anatomical MR image and mask of the target region,
 <img src="https://github.com/user-attachments/assets/988faa36-3083-4b00-bdf0-f97706bdaf09" width="200" />
 <img src="https://github.com/user-attachments/assets/ee09ef52-18f0-4045-86f1-64d3c3aaf0c7" width="200" />
 
-Note that PlanTUS also automatically identifies no-go or avoidance regions (grey areas on the head surface) where placing a transducer is not possible (e.g., around the ears, eyes, or nose, or above and around air-filled cavities/sinuses).
+Note that PlanTUS also automatically identifies no-go or avoidance regions (grey areas on the head surface in the screenshot below) where placing a transducer is not possible (e.g., around the ears, eyes, or nose, or above and around air-filled cavities/sinuses).
 
 ## 3. Select transducer position(s)
 
