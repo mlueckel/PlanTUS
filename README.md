@@ -49,7 +49,7 @@ Specify the variables in the *PlanTUS_wrapper.py* script (see script for example
 
 ## 2. Run the *PlanTUS_wrapper.py* script
 
-Based on the subject-specific anatomical MR image and mask of the target region, PlanTUS generates useful metrics that help you to intuitively evaluate potential transducer positions:
+Based on the subject-specific, 3D-reconstructed skin and skull surface as well as the mask of the target region, PlanTUS generates useful metrics that help you to intuitively evaluate potential transducer positions:
 - **Distance [in mm] between skin surface and target region.** A black outline indicates the restricted area on the head surface (see screenshot below), from which you would be able to reach the target brain region, given the usually limited focal depth of your transducer. In practice, it therefore only makes sense to place the transducer somewhere within this area.
 <img src="https://github.com/user-attachments/assets/15fa5cb8-0c5b-4d34-ab14-d622c217536e" width="200" />
 
