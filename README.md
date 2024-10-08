@@ -38,12 +38,12 @@ Specify the variables in the *PlanTUS_wrapper.py* script (see script for example
 - *target_roi_filepath*: Path to mask of target region of interest (in same space as T1 image; note: PlanTUS output folder will have same name as this file).
 
 **Transducer-specific variables**
-- *max_distance*: Maximum focal depth of transducer (in mm).
-- *min_distance*: Minimum focal depth of transducer (in mm).
-- *transducer_diameter*: Transducer aperture diameter (in mm).
-- *max_angle*: Maximum allowed angle for tilting of TUS transducer (in degrees).
-- *plane_offset*: Offset between radiating surface and exit plane of transducer (in mm).
-- *additional_offset*: Additional offset between skin and exit plane of transducer (in mm; e.g., due to addtional gel/silicone pad or other coupling media).
+- *max_distance*: Maximum focal depth of the transducer (in mm).
+- *min_distance*: Minimum focal depth of the transducer (in mm).
+- *transducer_diameter*: Diameter of the transducer aperture (in mm).
+- *max_angle*: Maximum allowed angle for tilting the transducer relative to the skin surface (in degrees).
+- *plane_offset*: Offset between the radiating surface and exit plane of transducer (in mm).
+- *additional_offset*: Additional offset between the skin and exit plane of transducer (in mm; e.g., due to addtional gel/silicone pad or other coupling media).
 - *focal_distance_list*, *flhm_list*: Focal distance and corresponding FLHM values (both in mm) according to, e.g., calibration report.
 
 
