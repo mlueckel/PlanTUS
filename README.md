@@ -126,3 +126,6 @@ Again, the oblique volume view (right) can help you to evaluate on- vs. off-targ
 <img src="https://github.com/user-attachments/assets/b1502848-d858-41ee-93a7-7cc3ab297e0b" width="800" />
 
 
+# Contact
+Maximilian Lueckel
+mlueckel@uni-mainz.de
