@@ -21,7 +21,7 @@ PlanTUS helps users of transcranial ultrasonic stimulation (TUS) to interactivel
 In order to use PlanTUS, you need the following files:
 - T1-weighted (T1w) MR image of your participant's head (.nii file)
 - (optionally: T2-weighted (T2w) MR image of your participant's head (.nii file))
-- Mask of your region of interest (co-registered to/in the same space as your participant's T1 image; .nii file)
+- Mask of your region of interest (co-registered to/in the same space as your participant's T1w image; .nii file)
   
 ### Charm
 Make sure to run the SimNIBS charm pipeline (https://simnibs.github.io/simnibs/build/html/documentation/command_line/charm.html) on your participant's T1w (and T2w) MR image before using PlanTUS. Charm segments the head into different tissue types. This segmentation is used to extract a head and skull mask, from which we generate a 3D model of the head and skull. 
