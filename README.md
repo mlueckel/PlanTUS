@@ -57,7 +57,7 @@ Based on the subject-specific, 3D-reconstructed skin and skull surface as well a
 <img src="https://github.com/user-attachments/assets/d6bdfd06-3ff7-4094-9321-f8f34641d80c" width="200" />
 <img src="https://github.com/user-attachments/assets/b6747049-5366-4cfd-9550-d43431a113b7" width="200" />
 
-- **Transducer tilt angle [in degrees] required to make the idealized beam trajectory intersect with the target region.** In practice, this angle should be as small as possible, to prevent (1) difficulties with coupling and fixating the transducer to the head surface and (2) strong reflections of the ultrasound.
+- **Angle of transducer tilt relative to the skin surface [in degrees] required to make the idealized beam trajectory intersect with the target region.** In practice, this angle should be as small as possible, to prevent (1) difficulties with coupling and fixating the transducer to the head surface and (2) strong reflections of the ultrasound.
 <img src="https://github.com/user-attachments/assets/5f331eaf-b1d7-48aa-bf0d-d5b1f946078b" width="200" />
 
 - **Angle [in degrees] between the normal vectors of the skin and skull surface (i.e., angle of incidence).** In practice, an area with as little discrepancy between the skin and skull normal as possible is preferable for transducer placement to minimize reflections of the ultrasound by the skull.
