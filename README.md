@@ -108,7 +108,7 @@ PlanTUS outputs several files for further use with different…
 
 
 
-**k-Plan example**: Using the PlanTUS output files, the selected transducer placement can be easily imported into the k-Plan software for validating the heuristically selected transducer placement with proper acoustic simulations.
+**k-Plan example**: Using the PlanTUS output files, the selected transducer placement can be easily imported into the k-Plan software (https://k-plan.io/) for validating the heuristically selected transducer placement with proper acoustic simulations.
 
 <img src="https://github.com/user-attachments/assets/ef43e905-1466-4dc3-9e69-ccefa266d8fa" width="800" />
 
