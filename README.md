@@ -112,15 +112,12 @@ These files include, among others:
 
     
 
-
-
-
 **k-Plan example**: The selected transducer placement can be easily imported into the k-Plan software (https://k-plan.io/), using the *.kps output file*, for validating the heuristically selected transducer placement with proper acoustic simulations.
 
 <img src="https://github.com/user-attachments/assets/ef43e905-1466-4dc3-9e69-ccefa266d8fa" width="800" />
   
 
-**Localite example**: Using the planTUS output files, the selected transducer placement can be easily imported into the Localite neuronavigation software (https://www.localite.de/en/products/tms-navigator/) as a target for navigation (i.e., instrument marker).
+**Localite example**: The selected transducer placement can be easily imported into the Localite neuronavigation software (https://www.localite.de/en/products/tms-navigator/) as a target for navigation (i.e., instrument marker).
 
 <img src="https://github.com/user-attachments/assets/123bb35e-965e-4993-a2f6-9ec445bbe2ba" width="800" />
 
