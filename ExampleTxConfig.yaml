@@ -1,0 +1,42 @@
+# Maximum and minimum focal depth of transducer (in mm)
+max_distance: 76.6
+min_distance: 33.1
+# Aperture diameter (in mm)
+transducer_diameter: 65.0
+# Maximum allowed angle for tilting of TUS transducer (in degrees)
+max_angle: 10.0
+# Offset between radiating surface and exit plane of transducer (in mm)
+plane_offset: 10.82
+# Additional offset between skin and exit plane of transducer (in mm;
+# e.g., due to addtional gel/silicone pad)
+additional_offset: 3.0
+# Focal distance and corresponding FLHM values (both in mm) according to, e.g.,
+# calibration report
+focal_distance_list:
+  - 33.1
+  - 34.7
+  - 36.8
+  - 39.3
+  - 42.4
+  - 46.2
+  - 50.8
+  - 56.0
+  - 61.8
+  - 68.5
+  - 76.6
+# Focal length to half maximum (FLHM) values (in mm)
+flhm_list:
+  - 8.4
+  - 9.3
+  - 10.3
+  - 11.6
+  - 13.5
+  - 16.1
+  - 19.2
+  - 22.8
+  - 26.3
+  - 30.2
+  - 34.5
+connectome_path: /Applications/wb_view.app/Contents/usr/bin
+freesurfer_path: /Applications/freesurfer/7.4.1/bin
+fsl_path: /Users/spichardo/fsl/share/fsl/bin
