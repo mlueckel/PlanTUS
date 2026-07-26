@@ -54,6 +54,8 @@ if __name__ == "__main__":
     parser.add_argument( "--use_internal_viewer",action="store_true",help="Use own viewer instead of wb_view")
     parser.add_argument( "--do_only_trajectory",type=int,default=-1,help="Optional integer to run only the generation of trajectory (default: -1). Specify number of triangles to generate."
 )
+    parser.add_argument("--overwrite", action="store_true", help="If existing PlanTUS results are found for the same inputs, overwrite them without prompting.")
+    parser.add_argument("--reuse_existing", action="store_true", help="If existing PlanTUS results are found for the same inputs, reuse them without prompting.")
 
     args = parser.parse_args()
 #===============================================================================
@@ -148,6 +150,99 @@ output_path = os.path.join(os.path.split(simnibs_mesh_filepath)[0], "PlanTUS", r
 os.makedirs(output_path, exist_ok=True)
 shutil.copy(target_roi_filepath, output_path)
 target_roi_filepath = os.path.join(output_path, roi_fname)
+# -----------------------------------------------------------------------------
+# Check for existing results for this exact combination of inputs
+# -----------------------------------------------------------------------------
+# PlanTUS can take a while to run (surface conversion, avoidance mask,
+# per-vertex metrics, composite metric). If this exact combination of
+# subject-specific inputs and transducer-specific parameters has already
+# been processed into `output_path`, we ask the user whether to overwrite
+# the existing results or simply reuse (load) them instead.
+import json
+import hashlib
+
+def _md5_of_file(filepath):
+    """Return the md5 checksum of a file's contents (or None if missing)."""
+    if not os.path.isfile(filepath):
+        return None
+    hasher = hashlib.md5()
+    with open(filepath, "rb") as fh:
+        for chunk in iter(lambda: fh.read(8192), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+run_parameters_filepath = os.path.join(output_path, "PlanTUS_run_parameters.json")
+
+# Fingerprint of everything that affects the computed surfaces/metrics
+current_run_parameters = {
+    "t1_filepath": os.path.abspath(t1_filepath),
+    "simnibs_mesh_filepath": os.path.abspath(simnibs_mesh_filepath),
+    "target_roi_md5": _md5_of_file(target_roi_filepath),
+    "max_distance": max_distance,
+    "min_distance": min_distance,
+    "optimal_distance": optimal_distance,
+    "transducer_diameter": transducer_diameter,
+    "max_angle": max_angle,
+    "plane_offset": plane_offset,
+    "additional_offset": additional_offset,
+    "focal_distance_list": focal_distance_list,
+    "flhm_list": flhm_list,
+    "weight_skin_target_distances": weight_skin_target_distances,
+    "weight_skin_target_angles": weight_skin_target_angles,
+    "weight_skin_target_intersections": weight_skin_target_intersections,
+    "weight_skin_skull_angles": weight_skin_skull_angles,
+    "weight_skull_thickness": weight_skull_thickness,
+}
+
+# Files that only exist once the full computation has completed successfully
+_expected_output_files = [
+    "skin.surf.gii",
+    "skull.surf.gii",
+    "distances_skin.func.gii",
+    "distances_skin_thresholded.func.gii",
+    "target_intersection_skin.func.gii",
+    "angles_skin.func.gii",
+    "skin_skull_angles_skin.func.gii",
+]
+
+_previous_run_parameters = None
+if os.path.isfile(run_parameters_filepath):
+    try:
+        with open(run_parameters_filepath, "r") as _f:
+            _previous_run_parameters = json.load(_f)
+    except (json.JSONDecodeError, OSError):
+        _previous_run_parameters = None
+
+_outputs_present = all(
+    os.path.isfile(os.path.join(output_path, _fname)) for _fname in _expected_output_files
+)
+_existing_results_found = (
+    _outputs_present
+    and _previous_run_parameters is not None
+    and _previous_run_parameters == current_run_parameters
+)
+
+skip_computation = False
+
+if _existing_results_found:
+    if getattr(args, "overwrite", False):
+        print(f"Existing PlanTUS results found in:\n  {output_path}\nOverwriting as requested (--overwrite).")
+    elif getattr(args, "reuse_existing", False):
+        print(f"Existing PlanTUS results found in:\n  {output_path}\nReusing existing data (--reuse_existing).")
+        skip_computation = True
+    else:
+        _answer = input(
+            "PlanTUS has already been run for this exact combination of inputs "
+            f"(T1, mesh, ROI, and transducer settings).\n"
+            f"Existing results were found in:\n  {output_path}\n"
+            "Overwrite the existing results? [y/N]: "
+        ).strip().lower()
+        if _answer in ("y", "yes"):
+            print("Overwriting existing PlanTUS results.")
+        else:
+            print("Keeping existing results — skipping recomputation and loading previously generated data.")
+            skip_computation = True
+
 
 # -----------------------------------------------------------------------------
 # Transducer model creation (if no pre-made model provided)
@@ -158,287 +253,294 @@ if transducer_surface_model_filepath == "":
     PlanTUS.create_surface_transducer_model(transducer_diameter/2, plane_offset + additional_offset, transducer_surface_model_filepath)
 
 if args.do_only_trajectory<0:
-    # -----------------------------------------------------------------------------
-    # Convert SimNIBS meshes to surfaces (STL + GIFTI); annotate structures
-    # -----------------------------------------------------------------------------
+    if not skip_computation:
+        # -----------------------------------------------------------------------------
+        # Convert SimNIBS meshes to surfaces (STL + GIFTI); annotate structures
+        # -----------------------------------------------------------------------------
 
-    # Skin
-    PlanTUS.convert_simnibs_mesh_to_surfaces(simnibs_mesh_filepath, [1005], "skin", output_path)
-    PlanTUS.add_structure_information(output_path + "/skin.surf.gii", "CORTEX_LEFT")
+        # Skin
+        PlanTUS.convert_simnibs_mesh_to_surfaces(simnibs_mesh_filepath, [1005], "skin", output_path)
+        PlanTUS.add_structure_information(output_path + "/skin.surf.gii", "CORTEX_LEFT")
 
-    # Skull
-    PlanTUS.convert_simnibs_mesh_to_surfaces(simnibs_mesh_filepath, [1007], "skull", output_path)
-    PlanTUS.add_structure_information(output_path + "/skull.surf.gii", "CORTEX_RIGHT")
-
-
-    # -----------------------------------------------------------------------------
-    # Avoidance mask on the skin surface
-    # -----------------------------------------------------------------------------
-    avoidance_mask = PlanTUS.create_avoidance_mask(simnibs_mesh_filepath,
-                                                   os.path.join(output_path, "skin.surf.gii"),
-                                                   transducer_diameter / 2.5,
-                                                   )
+        # Skull
+        PlanTUS.convert_simnibs_mesh_to_surfaces(simnibs_mesh_filepath, [1007], "skull", output_path)
+        PlanTUS.add_structure_information(output_path + "/skull.surf.gii", "CORTEX_RIGHT")
 
 
-    # -----------------------------------------------------------------------------
-    # Metrics: distances, angles, intersections
-    # -----------------------------------------------------------------------------
-    # Distances skin → target center
-    center = PlanTUS.roi_center_of_gravity(target_roi_filepath)
-    skin_target_distances = PlanTUS.distance_between_surface_and_point(os.path.join(output_path, "skin.surf.gii"), center)
-    PlanTUS.create_metric_from_pseudo_nifti("distances", skin_target_distances, os.path.join(output_path, "skin.surf.gii"))
-    PlanTUS.mask_metric(os.path.join(output_path, "distances_skin.func.gii"), os.path.join(output_path, "avoidance_skin.func.gii"))
-    PlanTUS.add_structure_information(os.path.join(output_path, "distances_skin.func.gii"), "CORTEX_LEFT")
-    PlanTUS.threshold_metric(os.path.join(output_path, "distances_skin.func.gii"), max_distance)
-    PlanTUS.mask_metric(os.path.join(output_path, "distances_skin_thresholded.func.gii"), os.path.join(output_path, "avoidance_skin.func.gii"))
-    PlanTUS.add_structure_information(os.path.join(output_path, "distances_skin_thresholded.func.gii"), "CORTEX_LEFT")
+        # -----------------------------------------------------------------------------
+        # Avoidance mask on the skin surface
+        # -----------------------------------------------------------------------------
+        avoidance_mask = PlanTUS.create_avoidance_mask(simnibs_mesh_filepath,
+                                                       os.path.join(output_path, "skin.surf.gii"),
+                                                       transducer_diameter / 2.5,
+                                                       )
 
 
-    # Angles between surface normals and skin→target vectors
-    angles = []
-    _, skin_normals = PlanTUS.compute_surface_metrics(os.path.join(output_path, "skin.surf.gii"))
-    skin_vecs = PlanTUS.vectors_between_surface_and_point(os.path.join(output_path, "skin.surf.gii"), center)
-    for i in range(len(skin_vecs)):
-        angles.append(math.degrees(PlanTUS.angle_between_vectors(skin_vecs[i], skin_normals[i])))
-    angles = np.abs(np.asarray(angles))
-    PlanTUS.create_metric_from_pseudo_nifti("angles", angles, os.path.join(output_path, "skin.surf.gii"))
-    PlanTUS.mask_metric(os.path.join(output_path, "angles_skin.func.gii"), os.path.join(output_path, "avoidance_skin.func.gii"))
-    PlanTUS.add_structure_information(os.path.join(output_path, "angles_skin.func.gii"), "CORTEX_LEFT")
+        # -----------------------------------------------------------------------------
+        # Metrics: distances, angles, intersections
+        # -----------------------------------------------------------------------------
+        # Distances skin → target center
+        center = PlanTUS.roi_center_of_gravity(target_roi_filepath)
+        skin_target_distances = PlanTUS.distance_between_surface_and_point(os.path.join(output_path, "skin.surf.gii"), center)
+        PlanTUS.create_metric_from_pseudo_nifti("distances", skin_target_distances, os.path.join(output_path, "skin.surf.gii"))
+        PlanTUS.mask_metric(os.path.join(output_path, "distances_skin.func.gii"), os.path.join(output_path, "avoidance_skin.func.gii"))
+        PlanTUS.add_structure_information(os.path.join(output_path, "distances_skin.func.gii"), "CORTEX_LEFT")
+        PlanTUS.threshold_metric(os.path.join(output_path, "distances_skin.func.gii"), max_distance)
+        PlanTUS.mask_metric(os.path.join(output_path, "distances_skin_thresholded.func.gii"), os.path.join(output_path, "avoidance_skin.func.gii"))
+        PlanTUS.add_structure_information(os.path.join(output_path, "distances_skin_thresholded.func.gii"), "CORTEX_LEFT")
 
 
-    # Intersections between normals and the target mesh
-    PlanTUS.stl_from_nii(target_roi_filepath, 0.25)
-    skin_coords, skin_normals = PlanTUS.compute_surface_metrics(os.path.join(output_path, "skin.surf.gii"))
-    skin_target_hits = PlanTUS.compute_vector_mesh_intersections(skin_coords, skin_normals, os.path.join(output_path, f"{roi_name}_3Dmodel.stl"), 200)
+        # Angles between surface normals and skin→target vectors
+        angles = []
+        _, skin_normals = PlanTUS.compute_surface_metrics(os.path.join(output_path, "skin.surf.gii"))
+        skin_vecs = PlanTUS.vectors_between_surface_and_point(os.path.join(output_path, "skin.surf.gii"), center)
+        for i in range(len(skin_vecs)):
+            angles.append(math.degrees(PlanTUS.angle_between_vectors(skin_vecs[i], skin_normals[i])))
+        angles = np.abs(np.asarray(angles))
+        PlanTUS.create_metric_from_pseudo_nifti("angles", angles, os.path.join(output_path, "skin.surf.gii"))
+        PlanTUS.mask_metric(os.path.join(output_path, "angles_skin.func.gii"), os.path.join(output_path, "avoidance_skin.func.gii"))
+        PlanTUS.add_structure_information(os.path.join(output_path, "angles_skin.func.gii"), "CORTEX_LEFT")
 
-    hit_vals = []
-    for hits in skin_target_hits:
-        if len(hits) == 1:
-            hit_vals.append(0)
-        elif len(hits) in (2, 3):
-            d = np.linalg.norm(np.asarray(hits[1]) - np.asarray(hits[0]))
-            hit_vals.append(d)
-        elif len(hits) == 4:
-            d = np.linalg.norm(np.asarray(hits[1]) - np.asarray(hits[0])) + np.linalg.norm(np.asarray(hits[3]) - np.asarray(hits[2]))
-            hit_vals.append(d)
-        elif len(hits) > 4:
-            hit_vals.append(np.nan)
+
+        # Intersections between normals and the target mesh
+        PlanTUS.stl_from_nii(target_roi_filepath, 0.25)
+        skin_coords, skin_normals = PlanTUS.compute_surface_metrics(os.path.join(output_path, "skin.surf.gii"))
+        skin_target_hits = PlanTUS.compute_vector_mesh_intersections(skin_coords, skin_normals, os.path.join(output_path, f"{roi_name}_3Dmodel.stl"), 200)
+
+        hit_vals = []
+        for hits in skin_target_hits:
+            if len(hits) == 1:
+                hit_vals.append(0)
+            elif len(hits) in (2, 3):
+                d = np.linalg.norm(np.asarray(hits[1]) - np.asarray(hits[0]))
+                hit_vals.append(d)
+            elif len(hits) == 4:
+                d = np.linalg.norm(np.asarray(hits[1]) - np.asarray(hits[0])) + np.linalg.norm(np.asarray(hits[3]) - np.asarray(hits[2]))
+                hit_vals.append(d)
+            elif len(hits) > 4:
+                hit_vals.append(np.nan)
+            else:
+                hit_vals.append(0)
+
+        target_intersection = np.asarray(hit_vals)
+        PlanTUS.create_metric_from_pseudo_nifti("target_intersection", target_intersection, os.path.join(output_path, "skin.surf.gii"))
+        PlanTUS.mask_metric(os.path.join(output_path, "target_intersection_skin.func.gii"), os.path.join(output_path, "avoidance_skin.func.gii"))
+        PlanTUS.add_structure_information(os.path.join(output_path, "target_intersection_skin.func.gii"), "CORTEX_LEFT")
+
+
+        # Skin–skull angle
+        skin_coords, skin_normals = PlanTUS.compute_surface_metrics(os.path.join(output_path, "skin.surf.gii"))
+        skull_coords, skull_normals = PlanTUS.compute_surface_metrics(os.path.join(output_path, "skull.surf.gii"))
+        skin_skull_hits = PlanTUS.compute_vector_mesh_intersections(skin_coords, skin_normals, os.path.join(output_path, "skull.stl"), 40)
+
+        idx_closest = []
+        for i in range(len(skin_coords)):
+            try:
+                p = skin_skull_hits[i][0]
+                dists = np.linalg.norm((skull_coords - p), axis=1)
+                idx_closest.append(int(np.argmin(dists)))
+            except Exception:
+                idx_closest.append(np.nan)
+        idx_closest = np.asarray(idx_closest).astype(int)
+
+        skin_skull_angles = []
+        for i in range(len(skin_coords)):
+            try:
+                ang = math.degrees(PlanTUS.angle_between_vectors(skin_normals[i], skull_normals[idx_closest[i]]))
+                skin_skull_angles.append(ang)
+            except Exception:
+                skin_skull_angles.append(0)
+        skin_skull_angles = np.asarray(skin_skull_angles)
+
+        PlanTUS.create_metric_from_pseudo_nifti("skin_skull_angles", skin_skull_angles, os.path.join(output_path, "skin.surf.gii"))
+        PlanTUS.mask_metric(os.path.join(output_path, "skin_skull_angles_skin.func.gii"), os.path.join(output_path, "avoidance_skin.func.gii"))
+        PlanTUS.add_structure_information(os.path.join(output_path, "skin_skull_angles_skin.func.gii"), "CORTEX_LEFT")
+
+
+        # Skull→target intersections projected on skin (aux metric)
+        skull_coords, skull_normals = PlanTUS.compute_surface_metrics(os.path.join(output_path, "skull.surf.gii"))
+        skull_target_hits = PlanTUS.compute_vector_mesh_intersections(skull_coords, skull_normals, os.path.join(output_path, f"{roi_name}_3Dmodel.stl"), 200)
+        non_empty_idx = [i for i, h in enumerate(skull_target_hits) if h]
+        skull_coords_in = skull_coords[non_empty_idx]
+        skull_normals_in = skull_normals[non_empty_idx]
+        skull_to_skin_hits = PlanTUS.compute_vector_mesh_intersections(skull_coords_in, skull_normals_in, os.path.join(output_path, "skin.stl"), -500)
+
+        all_xy = np.vstack([np.array(h) for h in skull_to_skin_hits if h])
+        intersection_coords = np.round(all_xy, 2)
+        mesh_round = np.round(skin_coords, 2)
+
+        matching = [np.where(np.all(np.isclose(mesh_round, c, atol=2), axis=1))[0] for c in intersection_coords]
+        matching = [m[0] for m in matching if len(m) > 0]
+        mask_arr = np.zeros(len(skin_coords), dtype=int)
+        mask_arr[matching] = 1
+
+        skull_target_intersection2 = np.where(mask_arr == 1, 1, 0)
+
+        PlanTUS.create_metric_from_pseudo_nifti("skin_skull_target_intersection", skull_target_intersection2, os.path.join(output_path, "skin.surf.gii"))
+        PlanTUS.mask_metric(os.path.join(output_path, "skin_skull_target_intersection_skin.func.gii"), os.path.join(output_path, "avoidance_skin.func.gii"))
+        PlanTUS.add_structure_information(os.path.join(output_path, "skin_skull_target_intersection_skin.func.gii"), "CORTEX_LEFT")
+
+
+        # Skull thickness (outer→inner or outer→outer where needed)
+        PlanTUS.convert_simnibs_mesh_to_surfaces(simnibs_mesh_filepath, [1007], "skull", output_path)
+        PlanTUS.add_structure_information(os.path.join(output_path, "skull.surf.gii"), "CORTEX_RIGHT")
+        PlanTUS.convert_simnibs_mesh_to_surfaces(simnibs_mesh_filepath, [1001, 1002, 1003, 1009], "skull_inner_surface", output_path)
+
+        skull_coords, skull_normals = PlanTUS.compute_surface_metrics(os.path.join(output_path, "skull.surf.gii"))
+        skull_inner_hits = PlanTUS.compute_vector_mesh_intersections(skull_coords, skull_normals, os.path.join(output_path, "skull_inner_surface.stl"), 100)
+
+        inner_nonempty = [i for i, h in enumerate(skull_inner_hits) if h]
+        inner_empty = [i for i, h in enumerate(skull_inner_hits) if not h]
+
+        inner_closest = np.asarray([skull_inner_hits[i][0] for i in inner_nonempty])
+
+        skull_outer_hits = PlanTUS.compute_vector_mesh_intersections(skull_coords, skull_normals, os.path.join(output_path, "skull.stl"), 100)
+        outer_hits_noinner = [skull_outer_hits[i] for i in inner_empty]
+        outer_closest = []
+        for h in outer_hits_noinner:
+            if len(h) == 0:
+                outer_closest.append(np.array([np.nan, np.nan, np.nan]))
+            elif len(h) == 1:
+                outer_closest.append(np.asarray(h[0]))
+            else:
+                outer_closest.append(np.asarray(h[1]))
+        outer_closest = np.asarray(outer_closest)
+
+        skull_coords_in = skull_coords[inner_nonempty]
+        skull_coords_out = skull_coords[inner_empty]
+
+        d_in = np.linalg.norm(skull_coords_in - inner_closest, axis=1)
+        d_out = np.linalg.norm(skull_coords_out - outer_closest, axis=1)
+
+        skull_thickness = np.zeros(len(skull_coords))
+        skull_thickness[inner_nonempty] = d_in
+        skull_thickness[inner_empty] = d_out
+
+        PlanTUS.create_metric_from_pseudo_nifti("skull_thickness", skull_thickness, os.path.join(output_path, "skull.surf.gii"))
+        PlanTUS.add_structure_information(os.path.join(output_path, "skull_thickness_skull.func.gii"), "CORTEX_RIGHT")
+
+        # Project thickness to skin via nearest skull vertex indices
+        skin_closest_thick = np.zeros(len(idx_closest))
+        for i in range(len(idx_closest)):
+            try:
+                skin_closest_thick[i] = skull_thickness[idx_closest[i]]
+            except Exception:
+                skin_closest_thick[i] = np.nan
+
+        PlanTUS.create_metric_from_pseudo_nifti("skull_thickness", skin_closest_thick, os.path.join(output_path, "skin.surf.gii"))
+        PlanTUS.mask_metric(os.path.join(output_path, "skull_thickness_skin.func.gii"), os.path.join(output_path, "avoidance_skin.func.gii"))
+        PlanTUS.add_structure_information(os.path.join(output_path, "skull_thickness_skin.func.gii"), "CORTEX_LEFT")
+
+
+        # -----------------------------------------------------------------------------
+        # Composite utility metric (geometric mean of normalized components)
+        # -----------------------------------------------------------------------------
+        # Zero-out invalid vertices using distance/avoidance
+        skin_target_distances_m = skin_target_distances.copy()
+        skin_target_distances_m[skin_target_distances > max_distance] = 0
+        skin_target_distances_m[avoidance_mask == 0] = 0
+
+        angles_m = angles.copy()
+        angles_m[skin_target_distances > max_distance] = 0
+        angles_m[avoidance_mask == 0] = 0
+
+        intersections_m = target_intersection.copy()
+        intersections_m[skin_target_distances > max_distance] = 0
+        intersections_m[avoidance_mask == 0] = 0
+
+        skin_skull_angles_m = skin_skull_angles.copy()
+        skin_skull_angles_m[skin_target_distances > max_distance] = 0
+        skin_skull_angles_m[avoidance_mask == 0] = 0
+
+        skin_closest_thick_m = skin_closest_thick.copy()
+        skin_closest_thick_m[skin_target_distances > max_distance] = 0
+        skin_closest_thick_m[avoidance_mask == 0] = 0
+
+        # Exponents (shape)
+        p_d = p_L = p_theta = p_delta = p_t = 1.0
+
+        # Weights
+        w_d = float(weight_skin_target_distances)
+        w_L = float(weight_skin_target_intersections)
+        w_theta = float(weight_skin_target_angles)
+        w_delta = float(weight_skin_skull_angles)
+        w_t = float(weight_skull_thickness)
+
+        # Distance utility (best at optimal, worst at max)
+        d_best, d_worst = float(optimal_distance), float(max_distance)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            u_d = np.clip(((d_best - skin_target_distances_m) / (d_best - d_worst)) ** p_d, 0, 1)
+            u_d[~np.isfinite(u_d)] = 0
+
+        # Intersection utility (more is better)
+        L = intersections_m.astype(float)
+        L[np.isnan(L)] = 0
+        L_min = np.nanmin(L)
+        L_max = np.nanmax(L)
+        if L_max > L_min:
+            u_L = np.clip(((L - L_min) / (L_max - L_min)) ** p_L, 0, 1)
         else:
-            hit_vals.append(0)
+            u_L = np.zeros_like(L)
 
-    target_intersection = np.asarray(hit_vals)
-    PlanTUS.create_metric_from_pseudo_nifti("target_intersection", target_intersection, os.path.join(output_path, "skin.surf.gii"))
-    PlanTUS.mask_metric(os.path.join(output_path, "target_intersection_skin.func.gii"), os.path.join(output_path, "avoidance_skin.func.gii"))
-    PlanTUS.add_structure_information(os.path.join(output_path, "target_intersection_skin.func.gii"), "CORTEX_LEFT")
-
-
-    # Skin–skull angle
-    skin_coords, skin_normals = PlanTUS.compute_surface_metrics(os.path.join(output_path, "skin.surf.gii"))
-    skull_coords, skull_normals = PlanTUS.compute_surface_metrics(os.path.join(output_path, "skull.surf.gii"))
-    skin_skull_hits = PlanTUS.compute_vector_mesh_intersections(skin_coords, skin_normals, os.path.join(output_path, "skull.stl"), 40)
-
-    idx_closest = []
-    for i in range(len(skin_coords)):
-        try:
-            p = skin_skull_hits[i][0]
-            dists = np.linalg.norm((skull_coords - p), axis=1)
-            idx_closest.append(int(np.argmin(dists)))
-        except Exception:
-            idx_closest.append(np.nan)
-    idx_closest = np.asarray(idx_closest).astype(int)
-
-    skin_skull_angles = []
-    for i in range(len(skin_coords)):
-        try:
-            ang = math.degrees(PlanTUS.angle_between_vectors(skin_normals[i], skull_normals[idx_closest[i]]))
-            skin_skull_angles.append(ang)
-        except Exception:
-            skin_skull_angles.append(0)
-    skin_skull_angles = np.asarray(skin_skull_angles)
-
-    PlanTUS.create_metric_from_pseudo_nifti("skin_skull_angles", skin_skull_angles, os.path.join(output_path, "skin.surf.gii"))
-    PlanTUS.mask_metric(os.path.join(output_path, "skin_skull_angles_skin.func.gii"), os.path.join(output_path, "avoidance_skin.func.gii"))
-    PlanTUS.add_structure_information(os.path.join(output_path, "skin_skull_angles_skin.func.gii"), "CORTEX_LEFT")
-
-
-    # Skull→target intersections projected on skin (aux metric)
-    skull_coords, skull_normals = PlanTUS.compute_surface_metrics(os.path.join(output_path, "skull.surf.gii"))
-    skull_target_hits = PlanTUS.compute_vector_mesh_intersections(skull_coords, skull_normals, os.path.join(output_path, f"{roi_name}_3Dmodel.stl"), 200)
-    non_empty_idx = [i for i, h in enumerate(skull_target_hits) if h]
-    skull_coords_in = skull_coords[non_empty_idx]
-    skull_normals_in = skull_normals[non_empty_idx]
-    skull_to_skin_hits = PlanTUS.compute_vector_mesh_intersections(skull_coords_in, skull_normals_in, os.path.join(output_path, "skin.stl"), -500)
-
-    all_xy = np.vstack([np.array(h) for h in skull_to_skin_hits if h])
-    intersection_coords = np.round(all_xy, 2)
-    mesh_round = np.round(skin_coords, 2)
-
-    matching = [np.where(np.all(np.isclose(mesh_round, c, atol=2), axis=1))[0] for c in intersection_coords]
-    matching = [m[0] for m in matching if len(m) > 0]
-    mask_arr = np.zeros(len(skin_coords), dtype=int)
-    mask_arr[matching] = 1
-
-    skull_target_intersection2 = np.where(mask_arr == 1, 1, 0)
-
-    PlanTUS.create_metric_from_pseudo_nifti("skin_skull_target_intersection", skull_target_intersection2, os.path.join(output_path, "skin.surf.gii"))
-    PlanTUS.mask_metric(os.path.join(output_path, "skin_skull_target_intersection_skin.func.gii"), os.path.join(output_path, "avoidance_skin.func.gii"))
-    PlanTUS.add_structure_information(os.path.join(output_path, "skin_skull_target_intersection_skin.func.gii"), "CORTEX_LEFT")
-
-
-    # Skull thickness (outer→inner or outer→outer where needed)
-    PlanTUS.convert_simnibs_mesh_to_surfaces(simnibs_mesh_filepath, [1007], "skull", output_path)
-    PlanTUS.add_structure_information(os.path.join(output_path, "skull.surf.gii"), "CORTEX_RIGHT")
-    PlanTUS.convert_simnibs_mesh_to_surfaces(simnibs_mesh_filepath, [1001, 1002, 1003, 1009], "skull_inner_surface", output_path)
-
-    skull_coords, skull_normals = PlanTUS.compute_surface_metrics(os.path.join(output_path, "skull.surf.gii"))
-    skull_inner_hits = PlanTUS.compute_vector_mesh_intersections(skull_coords, skull_normals, os.path.join(output_path, "skull_inner_surface.stl"), 100)
-
-    inner_nonempty = [i for i, h in enumerate(skull_inner_hits) if h]
-    inner_empty = [i for i, h in enumerate(skull_inner_hits) if not h]
-
-    inner_closest = np.asarray([skull_inner_hits[i][0] for i in inner_nonempty])
-
-    skull_outer_hits = PlanTUS.compute_vector_mesh_intersections(skull_coords, skull_normals, os.path.join(output_path, "skull.stl"), 100)
-    outer_hits_noinner = [skull_outer_hits[i] for i in inner_empty]
-    outer_closest = []
-    for h in outer_hits_noinner:
-        if len(h) == 0:
-            outer_closest.append(np.array([np.nan, np.nan, np.nan]))
-        elif len(h) == 1:
-            outer_closest.append(np.asarray(h[0]))
+        # Tilt utility (smaller angles are better)
+        A = angles_m.astype(float)
+        A[np.isnan(A)] = 0
+        theta_max = np.nanmax(A)
+        if theta_max > 0:
+            u_theta = (1 - A / theta_max) ** p_theta
         else:
-            outer_closest.append(np.asarray(h[1]))
-    outer_closest = np.asarray(outer_closest)
+            u_theta = np.ones_like(A)
 
-    skull_coords_in = skull_coords[inner_nonempty]
-    skull_coords_out = skull_coords[inner_empty]
+        # Alignment utility (blend intersections & tilt)
+        kappa = 0.7
+        w_align = w_L + w_theta
+        if w_align > 0:
+            rho = w_theta / w_align
+            u_align = 1 - np.power(1 - u_L, 1 - rho) * np.power(1 - kappa * u_theta, rho)
+        else:
+            u_align = np.ones_like(u_L)
 
-    d_in = np.linalg.norm(skull_coords_in - inner_closest, axis=1)
-    d_out = np.linalg.norm(skull_coords_out - outer_closest, axis=1)
+        # Skin–skull angle utility (smaller better)
+        D = skin_skull_angles_m.astype(float)
+        D[np.isnan(D)] = 0
+        delta_worst = np.nanmax(D)
+        if delta_worst > 0:
+            u_delta = np.clip((1 - D / delta_worst) ** p_delta, 0, 1)
+        else:
+            u_delta = np.ones_like(D)
 
-    skull_thickness = np.zeros(len(skull_coords))
-    skull_thickness[inner_nonempty] = d_in
-    skull_thickness[inner_empty] = d_out
+        # Skull thickness utility (thinner better)
+        T = skin_closest_thick_m.astype(float)
+        T[np.isnan(T)] = 0
+        t_best = np.nanmin(T)
+        t_worst = np.nanmax(T)
+        if t_worst > t_best:
+            u_t = np.clip((1 - (T - t_best) / (t_worst - t_best)) ** p_t, 0, 1)
+        else:
+            u_t = np.ones_like(T)
 
-    PlanTUS.create_metric_from_pseudo_nifti("skull_thickness", skull_thickness, os.path.join(output_path, "skull.surf.gii"))
-    PlanTUS.add_structure_information(os.path.join(output_path, "skull_thickness_skull.func.gii"), "CORTEX_RIGHT")
+        # Geometric aggregation
+        composite_metric = (np.power(u_align, w_align) * np.power(u_d, w_d) * np.power(u_delta, w_delta) * np.power(u_t, w_t))
 
-    # Project thickness to skin via nearest skull vertex indices
-    skin_closest_thick = np.zeros(len(idx_closest))
-    for i in range(len(idx_closest)):
-        try:
-            skin_closest_thick[i] = skull_thickness[idx_closest[i]]
-        except Exception:
-            skin_closest_thick[i] = np.nan
+        # Persist composite metric
+        metric_base = (
+        "composite_"
+        f"TargetDistance{weight_skin_target_distances}_"
+        f"TargetAngle{weight_skin_target_angles}_"
+        f"TargetIntersection{weight_skin_target_intersections}_"
+        f"SkinSkullAngle{weight_skin_skull_angles}_"
+        f"SkullThickness{weight_skull_thickness}"
+        )
 
-    PlanTUS.create_metric_from_pseudo_nifti("skull_thickness", skin_closest_thick, os.path.join(output_path, "skin.surf.gii"))
-    PlanTUS.mask_metric(os.path.join(output_path, "skull_thickness_skin.func.gii"), os.path.join(output_path, "avoidance_skin.func.gii"))
-    PlanTUS.add_structure_information(os.path.join(output_path, "skull_thickness_skin.func.gii"), "CORTEX_LEFT")
+        PlanTUS.create_metric_from_pseudo_nifti(metric_base, composite_metric, os.path.join(output_path, "skin.surf.gii"))
+        PlanTUS.mask_metric(os.path.join(output_path, metric_base + "_skin.func.gii"), os.path.join(output_path, "avoidance_skin.func.gii"))
+        PlanTUS.add_structure_information(os.path.join(output_path, metric_base + "_skin.func.gii"), "CORTEX_LEFT")
 
-
-    # -----------------------------------------------------------------------------
-    # Composite utility metric (geometric mean of normalized components)
-    # -----------------------------------------------------------------------------
-    # Zero-out invalid vertices using distance/avoidance
-    skin_target_distances_m = skin_target_distances.copy()
-    skin_target_distances_m[skin_target_distances > max_distance] = 0
-    skin_target_distances_m[avoidance_mask == 0] = 0
-
-    angles_m = angles.copy()
-    angles_m[skin_target_distances > max_distance] = 0
-    angles_m[avoidance_mask == 0] = 0
-
-    intersections_m = target_intersection.copy()
-    intersections_m[skin_target_distances > max_distance] = 0
-    intersections_m[avoidance_mask == 0] = 0
-
-    skin_skull_angles_m = skin_skull_angles.copy()
-    skin_skull_angles_m[skin_target_distances > max_distance] = 0
-    skin_skull_angles_m[avoidance_mask == 0] = 0
-
-    skin_closest_thick_m = skin_closest_thick.copy()
-    skin_closest_thick_m[skin_target_distances > max_distance] = 0
-    skin_closest_thick_m[avoidance_mask == 0] = 0
-
-    # Exponents (shape)
-    p_d = p_L = p_theta = p_delta = p_t = 1.0
-
-    # Weights
-    w_d = float(weight_skin_target_distances)
-    w_L = float(weight_skin_target_intersections)
-    w_theta = float(weight_skin_target_angles)
-    w_delta = float(weight_skin_skull_angles)
-    w_t = float(weight_skull_thickness)
-
-    # Distance utility (best at optimal, worst at max)
-    d_best, d_worst = float(optimal_distance), float(max_distance)
-    with np.errstate(divide='ignore', invalid='ignore'):
-        u_d = np.clip(((d_best - skin_target_distances_m) / (d_best - d_worst)) ** p_d, 0, 1)
-        u_d[~np.isfinite(u_d)] = 0
-
-    # Intersection utility (more is better)
-    L = intersections_m.astype(float)
-    L[np.isnan(L)] = 0
-    L_min = np.nanmin(L)
-    L_max = np.nanmax(L)
-    if L_max > L_min:
-        u_L = np.clip(((L - L_min) / (L_max - L_min)) ** p_L, 0, 1)
+        # Persist the fingerprint of this run so future runs can detect a match
+        with open(run_parameters_filepath, "w") as _f:
+            json.dump(current_run_parameters, _f, indent=2)
     else:
-        u_L = np.zeros_like(L)
-
-    # Tilt utility (smaller angles are better)
-    A = angles_m.astype(float)
-    A[np.isnan(A)] = 0
-    theta_max = np.nanmax(A)
-    if theta_max > 0:
-        u_theta = (1 - A / theta_max) ** p_theta
-    else:
-        u_theta = np.ones_like(A)
-
-    # Alignment utility (blend intersections & tilt)
-    kappa = 0.7
-    w_align = w_L + w_theta
-    if w_align > 0:
-        rho = w_theta / w_align
-        u_align = 1 - np.power(1 - u_L, 1 - rho) * np.power(1 - kappa * u_theta, rho)
-    else:
-        u_align = np.ones_like(u_L)
-
-    # Skin–skull angle utility (smaller better)
-    D = skin_skull_angles_m.astype(float)
-    D[np.isnan(D)] = 0
-    delta_worst = np.nanmax(D)
-    if delta_worst > 0:
-        u_delta = np.clip((1 - D / delta_worst) ** p_delta, 0, 1)
-    else:
-        u_delta = np.ones_like(D)
-
-    # Skull thickness utility (thinner better)
-    T = skin_closest_thick_m.astype(float)
-    T[np.isnan(T)] = 0
-    t_best = np.nanmin(T)
-    t_worst = np.nanmax(T)
-    if t_worst > t_best:
-        u_t = np.clip((1 - (T - t_best) / (t_worst - t_best)) ** p_t, 0, 1)
-    else:
-        u_t = np.ones_like(T)
-
-    # Geometric aggregation
-    composite_metric = (np.power(u_align, w_align) * np.power(u_d, w_d) * np.power(u_delta, w_delta) * np.power(u_t, w_t))
-
-    # Persist composite metric
-    metric_base = (
-    "composite_"
-    f"TargetDistance{weight_skin_target_distances}_"
-    f"TargetAngle{weight_skin_target_angles}_"
-    f"TargetIntersection{weight_skin_target_intersections}_"
-    f"SkinSkullAngle{weight_skin_skull_angles}_"
-    f"SkullThickness{weight_skull_thickness}"
-    )
-
-    PlanTUS.create_metric_from_pseudo_nifti(metric_base, composite_metric, os.path.join(output_path, "skin.surf.gii"))
-    PlanTUS.mask_metric(os.path.join(output_path, metric_base + "_skin.func.gii"), os.path.join(output_path, "avoidance_skin.func.gii"))
-    PlanTUS.add_structure_information(os.path.join(output_path, metric_base + "_skin.func.gii"), "CORTEX_LEFT")
+        print(f"Loading previously generated PlanTUS outputs from:\n  {output_path}")
 
 
 
@@ -499,12 +601,12 @@ if args.do_only_trajectory<0:
         # -----------------------------------------------------------------------------
         # Create and open scences in Connectome Workbench viewer
         # -----------------------------------------------------------------------------
-    
+
         import subprocess
         import re
         import threading
         from pynput import mouse
-    
+
         scene_variable_names = [
             'SKIN_SURFACE_FILENAME',
             'SKIN_SURFACE_FILEPATH',
@@ -524,7 +626,7 @@ if args.do_only_trajectory<0:
             'T1_FILEPATH',
             'MASK_FILENAME',
             'MASK_FILEPATH']
-    
+
         scene_variable_values = [
             'skin.surf.gii',
             './skin.surf.gii',
@@ -589,8 +691,8 @@ if args.do_only_trajectory<0:
                     print(f"Switched vertex to triangle nearest vertex: {triangle_number}")
 
                     # Ask the user if they want to generate the transducer placement
-                    response = input(f"Generate transducer placement for vertex {triangle_number}? (yes/no): ").strip().lower()
-                    if response == "yes":
+                    response = input(f"Generate transducer placement for vertex {triangle_number}? [y/N]: ").strip().lower()
+                    if response in ("y", "yes"):
                         print(f"Generating transducer placement for vertex {triangle_number}")
                         PlanTUS.prepare_acoustic_simulation(triangle_number,
                                                             output_path,
@@ -621,7 +723,7 @@ if args.do_only_trajectory<0:
     process.wait()
     output_thread.join()
     listener.stop()
-    
+
 else:
     # If only trajectory is to be done, call the appropriate function
     PlanTUS.prepare_acoustic_simulation(args.do_only_trajectory,
