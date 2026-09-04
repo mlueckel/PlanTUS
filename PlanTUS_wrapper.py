@@ -50,9 +50,8 @@ if __name__ == "__main__":
     parser.add_argument("mesh", type=str,  help="Path to head mesh")
     parser.add_argument("roi", type=str, help="Path to target ROI")
     parser.add_argument("config", type=str, help="Path to configuration file")
-    parser.add_argument( "--skip_wb_view",action="store_true",help="Run calculations but skip wb_view")
-    parser.add_argument( "--use_internal_viewer",action="store_true",help="Use own viewer instead of wb_view")
-    parser.add_argument( "--do_only_trajectory",type=int,default=-1,help="Optional integer to run only the generation of trajectory (default: -1). Specify number of triangles to generate."
+    parser.add_argument( "--skip_viewer",action="store_true",help="Run calculations but skip opening the viewer window")
+    parser.add_argument( "--placement_only",type=int,default=-1,help="Optional integer to run only the generation of a placement for a known vertex (default: -1, i.e. interactive selection). Specify the vertex number."
 )
     parser.add_argument("--overwrite", action="store_true", help="If existing PlanTUS results are found for the same inputs, overwrite them without prompting.")
     parser.add_argument("--reuse_existing", action="store_true", help="If existing PlanTUS results are found for the same inputs, reuse them without prompting.")
@@ -120,14 +119,10 @@ plantus_main_folder = str(resource_path())
 plantus_code_path = os.path.join(plantus_main_folder, "code")
 planning_scene_template_filepath = os.path.join(plantus_main_folder, "resources", "scene_templates", "TUSTransducerPlacementPlanning_TEMPLATE.scene")
 placement_scene_template_filepath = os.path.join(plantus_main_folder, "resources", "scene_templates", "TUSTransducerPlacement_TEMPLATE.scene")
-# Transducer model (*.surf.gii) — leave empty to generate a generic one
-bUseGenericTransducerModel = config.get("bUseGenericTransducerModel", False)
-if bUseGenericTransducerModel:
-        transducer_surface_model_filepath = ""
-else:
-    transducer_surface_model_filepath = os.path.join(plantus_main_folder, "resources", "transducer_models", "TRANSDUCER-NEUROFUS-CTX-500-4_DEVICE.surf.gii")
-# update paths according to user configuration
-connectome_wb_path = config["connectome_wb_path"]
+# Transducer model (*.surf.gii) — always generated as a generic cylinder
+# (see the "Transducer model creation" block below), sized from
+# transducer_diameter/plane_offset/additional_offset in the config.
+transducer_surface_model_filepath = ""
 
 #===============================================================================
 # Setup
@@ -140,13 +135,16 @@ sys.path.append(plantus_code_path)
 os.chdir(plantus_code_path)
 import PlanTUS as PlanTUS
 
-PlanTUS.set_paths(connectome_wb_path=connectome_wb_path)
-
 
 # Prepare output directory named by ROI
 roi_fname = os.path.split(target_roi_filepath)[1]
 roi_name = roi_fname.replace(".nii", "").replace(".gz", "")
-output_path = os.path.join(os.path.split(simnibs_mesh_filepath)[0], "PlanTUS", roi_name)
+# Base directory PlanTUS writes its "PlanTUS/<roi_name>" output folder
+# under. Defaults to the m2m folder (next to the .msh file) if
+# "output_folder" isn't set in the config — same layout as before,
+# just with a configurable base directory.
+output_base = config.get("output_folder") or os.path.split(simnibs_mesh_filepath)[0]
+output_path = os.path.join(output_base, "PlanTUS", roi_name)
 os.makedirs(output_path, exist_ok=True)
 shutil.copy(target_roi_filepath, output_path)
 target_roi_filepath = os.path.join(output_path, roi_fname)
@@ -252,7 +250,7 @@ if transducer_surface_model_filepath == "":
     transducer_surface_model_filepath = os.path.join(output_path, "generic_transducer.surf.gii")
     PlanTUS.create_surface_transducer_model(transducer_diameter/2, plane_offset + additional_offset, transducer_surface_model_filepath)
 
-if args.do_only_trajectory<0:
+if args.placement_only<0:
     if not skip_computation:
         # -----------------------------------------------------------------------------
         # Convert SimNIBS meshes to surfaces (STL + GIFTI); annotate structures
@@ -382,8 +380,8 @@ if args.do_only_trajectory<0:
 
 
         # Skull thickness (outer→inner or outer→outer where needed)
-        PlanTUS.convert_simnibs_mesh_to_surfaces(simnibs_mesh_filepath, [1007], "skull", output_path)
-        PlanTUS.add_structure_information(os.path.join(output_path, "skull.surf.gii"), "CORTEX_RIGHT")
+        # (skull.surf.gii/.stl already extracted earlier in this run — no
+        # need to re-read the full .msh file and rebuild an identical result)
         PlanTUS.convert_simnibs_mesh_to_surfaces(simnibs_mesh_filepath, [1001, 1002, 1003, 1009], "skull_inner_surface", output_path)
 
         skull_coords, skull_normals = PlanTUS.compute_surface_metrics(os.path.join(output_path, "skull.surf.gii"))
@@ -542,191 +540,100 @@ if args.do_only_trajectory<0:
     else:
         print(f"Loading previously generated PlanTUS outputs from:\n  {output_path}")
 
-
+    # metric_base is a deterministic filename string derived only from the
+    # weight config values below — recomputed here (not reused from the
+    # fresh-run branch above) so it's valid whether this run just computed
+    # everything or loaded cached outputs from a previous run.
+    metric_base = (
+        "composite_"
+        f"TargetDistance{weight_skin_target_distances}_"
+        f"TargetAngle{weight_skin_target_angles}_"
+        f"TargetIntersection{weight_skin_target_intersections}_"
+        f"SkinSkullAngle{weight_skin_skull_angles}_"
+        f"SkullThickness{weight_skull_thickness}"
+    )
 
     # ---------------------------------------------------------------
-    if args.skip_wb_view:
-            sys.exit(0)  #skip wb_view part if requested
+    if args.skip_viewer:
+            sys.exit(0)  # skip opening the viewer, as requested
 
-    if args.use_internal_viewer:
-        from PyQt5.QtWidgets import QApplication,QDialog,QVBoxLayout
-        from Viewer import PrepareShowResults
+    from PyQt5.QtWidgets import QApplication,QDialog,QVBoxLayout
+    from Viewer import PrepareShowResults
 
-        app = QApplication(sys.argv)
+    app = QApplication(sys.argv)
 
-        DlgResults=QDialog()
-        DlgResults.setWindowTitle("PlanTUS Results")
+    DlgResults=QDialog()
+    DlgResults.setWindowTitle("PlanTUS")
 
-        layout = QVBoxLayout()
-        DlgResults.setLayout(layout)
-        DlgResults.resize(1700, 700)
+    layout = QVBoxLayout()
+    DlgResults.setLayout(layout)
+    DlgResults.resize(1700, 700)
 
-        def CallBackGenerateTrajectory(selection):
-            DlgResults.accept()
+    def CallBackGenerateTrajectory(selection, roll_degrees):
+        # Generates immediately for the current placement and does NOT
+        # close the dialog — the user can keep picking and generating
+        # further placements in the same session; the window only
+        # closes when they explicitly close it (native window controls).
+        print('Generating trajectory for ID', selection, ' roll:', roll_degrees)
+        PlanTUS.prepare_acoustic_simulation(selection,
+                                            output_path,
+                                            target_roi_filepath,
+                                            t1_filepath,
+                                            max_distance,
+                                            min_distance,
+                                            transducer_diameter,
+                                            max_angle,
+                                            plane_offset,
+                                            additional_offset,
+                                            transducer_surface_model_filepath,
+                                            focal_distance_list,
+                                            flhm_list,
+                                            placement_scene_template_filepath,
+                                            ID=IDTarget,
+                                            skip_viewer=True,
+                                            roll_degrees=roll_degrees)
 
-        WidgetViewer = PrepareShowResults(output_path +os.sep + "skin.surf.gii",
-                                          output_path +os.sep + "distances_skin.func.gii",
-                                          output_path +os.sep + "distances_skin_thresholded.func.gii",
-                                          output_path +os.sep + "target_intersection_skin.func.gii",
-                                          output_path +os.sep + "angles_skin.func.gii",
-                                          output_path +os.sep + "skin_skull_angles_skin.func.gii",
-                                          CallBackGenerateTrajectory=CallBackGenerateTrajectory)
+    # Suggest an initial placement: the vertex with the best (highest)
+    # composite metric score, immediately visualized when the viewer
+    # opens. The user can still pick a different vertex afterward —
+    # this only sets what's shown first, exactly as if that vertex had
+    # been clicked.
+    import nibabel as nib
+    composite_path = os.path.join(output_path, metric_base + "_skin.func.gii")
+    composite_values = np.asarray(nib.load(composite_path).darrays[0].data, dtype=float)
+    optimal_vertex = int(np.nanargmax(composite_values))
+    print(f"Suggesting vertex {optimal_vertex} as the initial placement (highest composite metric score: "
+          f"{composite_values[optimal_vertex]:.3f}) — pick a different vertex to override.")
 
-        WidgetViewer.resize(1700, 700)
-        layout.addWidget(WidgetViewer)
+    WidgetViewer = PrepareShowResults(output_path +os.sep + "skin.surf.gii",
+                                      output_path +os.sep + "distances_skin.func.gii",
+                                      output_path +os.sep + "distances_skin_thresholded.func.gii",
+                                      output_path +os.sep + "target_intersection_skin.func.gii",
+                                      output_path +os.sep + "angles_skin.func.gii",
+                                      output_path +os.sep + "skin_skull_angles_skin.func.gii",
+                                      CallBackGenerateTrajectory=CallBackGenerateTrajectory,
+                                      t1_path=t1_filepath,
+                                      additional_offset=additional_offset,
+                                      min_distance=min_distance,
+                                      max_distance=max_distance,
+                                      roi_path=target_roi_filepath,
+                                      roi_stl_path=os.path.join(output_path, f"{roi_name}_3Dmodel.stl"),
+                                      focal_distance_list=focal_distance_list,
+                                      flhm_list=flhm_list,
+                                      transducer_diameter=transducer_diameter,
+                                      offset=plane_offset,
+                                      initial_vertex=optimal_vertex)
 
-        if not DlgResults.exec():
-            sys.exit(0) #we stop here
-        print('Generating trajectory for ID', WidgetViewer.select_vortex)
-        PlanTUS.prepare_acoustic_simulation(WidgetViewer.select_vortex,
-                                                                output_path,
-                                                                target_roi_filepath,
-                                                                t1_filepath,
-                                                                max_distance,
-                                                                min_distance,
-                                                                transducer_diameter,
-                                                                max_angle,
-                                                                plane_offset,
-                                                                additional_offset,
-                                                                transducer_surface_model_filepath,
-                                                                focal_distance_list,
-                                                                flhm_list,
-                                                                placement_scene_template_filepath,
-                                                                ID=IDTarget,
-                                                                use_internal_viewer=args.use_internal_viewer)
+    WidgetViewer.resize(1700, 700)
+    layout.addWidget(WidgetViewer)
 
-
-
-    else:
-        # -----------------------------------------------------------------------------
-        # Create and open scences in Connectome Workbench viewer
-        # -----------------------------------------------------------------------------
-
-        import subprocess
-        import re
-        import threading
-        from pynput import mouse
-
-        scene_variable_names = [
-            'SKIN_SURFACE_FILENAME',
-            'SKIN_SURFACE_FILEPATH',
-            'SKULL_SURFACE_FILENAME',
-            'SKULL_SURFACE_FILEPATH',
-            'DISTANCES_FILENAME',
-            'DISTANCES_FILEPATH',
-            'INTERSECTION_FILENAME',
-            'INTERSECTION_FILEPATH',
-            'ANGLES_FILENAME',
-            'ANGLES_FILEPATH',
-            'ANGLES_SKIN_SKULL_FILENAME',
-            'ANGLES_SKIN_SKULL_FILEPATH',
-            'DISTANCES_MAX_FILENAME',
-            'DISTANCES_MAX_FILEPATH',
-            'T1_FILENAME',
-            'T1_FILEPATH',
-            'MASK_FILENAME',
-            'MASK_FILEPATH']
-
-        scene_variable_values = [
-            'skin.surf.gii',
-            './skin.surf.gii',
-            'skull.surf.gii',
-            './skull.surf.gii',
-            'distances_skin.func.gii',
-            './distances_skin.func.gii',
-            'target_intersection_skin.func.gii',
-            './target_intersection_skin.func.gii',
-            'angles_skin.func.gii',
-            './angles_skin.func.gii',
-            'skin_skull_angles_skin.func.gii',
-            './skin_skull_angles_skin.func.gii',
-            'distances_skin_thresholded.func.gii',
-            './distances_skin_thresholded.func.gii',
-            'T1.nii.gz',
-            '../../T1.nii.gz',
-            roi_fname,
-            './' + roi_fname]
-
-
-    PlanTUS.create_scene(planning_scene_template_filepath, output_path + "/scene.scene", scene_variable_names, scene_variable_values)
-
-    # Define the command
-    command = connectome_wb_path + os.sep + "wb_view -logging FINER " + output_path + os.sep + "scene.scene"
-
-    # Regular expression pattern to match the phrase and the number
-    pattern = re.compile(r"Switched vertex to triangle nearest vertex\s+(\.\d+)")
-
-    # Initialize the variable to store the number and a flag to trigger processing
-    triangle_number = None
-    process_line = False
-
-    # Function to monitor mouse clicks
-    def on_click(x, y, button, pressed):
-        global process_line
-        if pressed:
-            process_line = True
-
-    # Start listening for mouse clicks in a separate thread
-    listener = mouse.Listener(on_click=on_click)
-    listener.start()
-
-    # Start the process to run the command
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, cwd=output_path, text=True)
-
-    # Function to read the process output
-    def read_output():
-        global triangle_number, process_line, IDTarget
-
-        while True:
-            output = process.stderr.readline()
-            if output == '' and process.poll() is not None:
-                break
-
-            if process_line:
-                # Process the latest line only when a mouse click is detected
-                match = pattern.search(output)
-                if match:
-                    triangle_number = match.group(1)
-                    triangle_number = int(triangle_number.replace(".", ""))
-                    print(f"Switched vertex to triangle nearest vertex: {triangle_number}")
-
-                    # Ask the user if they want to generate the transducer placement
-                    response = input(f"Generate transducer placement for vertex {triangle_number}? [y/N]: ").strip().lower()
-                    if response in ("y", "yes"):
-                        print(f"Generating transducer placement for vertex {triangle_number}")
-                        PlanTUS.prepare_acoustic_simulation(triangle_number,
-                                                            output_path,
-                                                            target_roi_filepath,
-                                                            t1_filepath,
-                                                            max_distance,
-                                                            min_distance,
-                                                            transducer_diameter,
-                                                            max_angle,
-                                                            plane_offset,
-                                                            additional_offset,
-                                                            transducer_surface_model_filepath,
-                                                            focal_distance_list,
-                                                            flhm_list,
-                                                            placement_scene_template_filepath,
-                                                            ID=IDTarget) #if IDTarget is empty, the vertex number will be used
-                    else:
-                        print("No action taken.")
-
-                    # Reset the flag
-                    process_line = False
-
-    # Start the output reading in a separate thread
-    output_thread = threading.Thread(target=read_output)
-    output_thread.start()
-
-    # Wait for the process and threads to finish
-    process.wait()
-    output_thread.join()
-    listener.stop()
+    DlgResults.exec()  # blocks until the user closes the window; every
+                        # "Save Placement" click during this time
+                        # already ran via CallBackGenerateTrajectory above
 
 else:
     # If only trajectory is to be done, call the appropriate function
-    PlanTUS.prepare_acoustic_simulation(args.do_only_trajectory,
+    PlanTUS.prepare_acoustic_simulation(args.placement_only,
                                         output_path,
                                         target_roi_filepath,
                                         t1_filepath,
@@ -741,4 +648,4 @@ else:
                                         flhm_list,
                                         placement_scene_template_filepath,
                                         ID=IDTarget,
-                                        skip_wb_view=args.skip_wb_view)
+                                        skip_viewer=args.skip_viewer)

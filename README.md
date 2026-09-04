@@ -12,6 +12,8 @@ PlanTUS helps users of transcranial ultrasonic stimulation (TUS) to interactivel
 
 <img src="https://github.com/user-attachments/assets/ff3850a9-2ed8-43a8-b93c-f28a9d0d7c2e" width="20" /> **PlanTUS is supposed to inform acoustic simulations, but does not replace them. Transducer positions selected using PlanTUS should always be validated using proper acoustic simulations!** <img src="https://github.com/user-attachments/assets/ff3850a9-2ed8-43a8-b93c-f28a9d0d7c2e" width="20" />
 
+> **v2.0:** PlanTUS no longer depends on Connectome Workbench — everything now runs through PlanTUS' own built-in interactive viewer. Output filenames have also changed. See [`CHANGELOG.md`](./CHANGELOG.md) for the full list of changes, including a filename migration table if you have scripts depending on the old naming.
+
 ---
 
 # Table of contents
@@ -23,7 +25,7 @@ PlanTUS helps users of transcranial ultrasonic stimulation (TUS) to interactivel
   - [3. Select transducer position(s)](#3-select-transducer-positions)
   - [4. Evaluate transducer and (estimated) focus position](#4-evaluate-transducer-and-estimated-focus-position)
   - [5. Use PlanTUS outputs for acoustic simulations and neuronavigation](#5-use-plantus-outputs-for-acoustic-simulations-and-neuronavigation)
-  - [6. Review acoustic simulation results](#6-review-acoustic-simulation-results)
+  - [6. Reviewing k-Plan simulation results](#6-reviewing-k-plan-simulation-results)
 - [Output reference](#output-reference)
 - [Tips & troubleshooting](#tips--troubleshooting)
 - [Contact](#contact)
@@ -32,13 +34,12 @@ PlanTUS helps users of transcranial ultrasonic stimulation (TUS) to interactivel
 
 # Dependencies
 
-PlanTUS is a Python tool that wraps [SimNIBS](https://simnibs.github.io/simnibs/) meshes and drives [Connectome Workbench](https://humanconnectome.org/software/get-connectome-workbench) for visualization. It needs the following pieces of software installed and on your system:
+PlanTUS is a Python tool that wraps [SimNIBS](https://simnibs.github.io/simnibs/) meshes. Visualization and interactive planning are handled entirely by PlanTUS' own PyQt/VTK-based viewer — **Connectome Workbench is not required.**
 
 ### External software
 | Software | Purpose | Link |
 |---|---|---|
 | **SimNIBS** (≥ 4.x) | Head segmentation (`charm`) and mesh generation; also provides the `simnibs` Python package (incl. the `brainsight` export module) used internally | https://simnibs.github.io/simnibs/build/html/installation/simnibs_installer.html |
-| **Connectome Workbench** | 3D visualization of the head surface, metrics, and transducer/focus models (`wb_view`, `wb_command`) | https://humanconnectome.org/software/get-connectome-workbench |
 | **FSL** | Only needed for `ImageTransform_4kPlan.py`, which uses `fslswapdim` to correct image orientation before k-Plan-compatible re-registration | https://fsl.fmrib.ox.ac.uk/fsl/fslwiki |
 
 > **Note:** SimNIBS ships its own Python environment (`simnibs_env` / the `simnibs` conda env created by the installer). It is strongly recommended to install/run PlanTUS **inside that same environment**, since it already provides a compatible Python version and several of the dependencies below (numpy, nibabel, scipy, pandas, ants, etc.), and gives PlanTUS direct access to the `simnibs` package.
@@ -54,20 +55,24 @@ scipy
 pandas
 pyyaml
 h5py
+trimesh        # surface reconstruction/smoothing
+vtk            # 3D rendering (the interactive viewer, always used)
+PyQt5          # GUI for the interactive viewer (PySide6 also supported, tried first)
 antspyx        # imported as `ants`; needed for k-Plan result registration and ImageTransform_4kPlan.py
-pynput         # only needed for the Connectome Workbench click-tracking workflow (see step 3)
-PyQt5          # only needed if you use the internal viewer (--use_internal_viewer)
-vtk            # only needed if you use the internal viewer (--use_internal_viewer)
+```
+
+Optional:
+```
+potpourri3d    # exact geodesic-distance solver used for avoidance-mask erosion;
+               # falls back to an approximate method if not installed
 ```
 
 You can install these into your SimNIBS conda environment with, e.g.:
 
 ```bash
 conda activate simnibs_env
-pip install nilearn pyyaml h5py antspyx pynput PyQt5 vtk
+pip install nilearn pyyaml h5py trimesh vtk PyQt5 antspyx potpourri3d
 ```
-
-`--use_internal_viewer` is optional: if you don't pass it, PlanTUS drives `wb_view` directly and you don't need `PyQt5`/`vtk`. If you do use it, PlanTUS renders the head surface and transducer/focus models in its own lightweight VTK-based viewer (`code/Viewer.py`) instead of launching Connectome Workbench.
 
 ---
 
@@ -107,9 +112,12 @@ python PlanTUS_wrapper.py <t1> <mesh> <roi> <config> [options]
 
 | Optional flag | Description |
 |---|---|
-| `--skip_wb_view` | Run all calculations but skip opening Connectome Workbench (`wb_view`) — useful for batch/headless processing |
-| `--use_internal_viewer` | Use PlanTUS' own lightweight VTK-based viewer instead of `wb_view` |
-| `--do_only_trajectory <N>` | Skip the interactive selection step entirely and directly (re-)generate the transducer placement for surface vertex/triangle number `N`. Useful for scripting or re-exporting outputs for a position you already picked. |
+| `--placement_only <N>` | Skip the interactive selection step entirely and directly (re-)generate the transducer placement for surface vertex number `N`. Useful for scripting or re-exporting outputs for a position you already picked. |
+| `--skip_viewer` | Run all calculations but don't open the interactive viewer window — useful for batch/headless processing. |
+| `--overwrite` | If existing PlanTUS results are found for the same inputs (T1, mesh, ROI, and transducer settings), overwrite them without prompting. |
+| `--reuse_existing` | If existing PlanTUS results are found for the same inputs, reuse them without prompting (skips recomputation, jumps straight to the viewer with previously generated data). |
+
+If existing results are found and neither `--overwrite` nor `--reuse_existing` is given, PlanTUS asks you interactively (in the terminal) whether to overwrite.
 
 ### Config file design and contents
 
@@ -118,12 +126,12 @@ Each transducer typically gets its **own config file** (e.g., `PlanTUS_config_CT
 The YAML file has three logical sections:
 
 **1) Transducer-specific variables** — the physical/acoustic properties of your transducer, typically taken from the manufacturer's calibration report:
-- `max_distance`, `min_distance`, `optimal_distance`: maximum, minimum, and optimal focal depth of the transducer (mm). `optimal_distance` is new relative to earlier versions and is used to score candidate positions (closer to optimal = better; see composite score below).
+- `max_distance`, `min_distance`, `optimal_distance`: maximum, minimum, and optimal focal depth of the transducer (mm). `optimal_distance` is used to score candidate positions (closer to optimal = better; see composite score below).
 - `transducer_diameter`: aperture diameter (mm)
 - `max_angle`: maximum allowed tilt of the transducer relative to the skin surface (degrees)
 - `plane_offset`: offset between the radiating surface and the exit plane of the transducer (mm)
 - `additional_offset`: additional offset between the skin and the exit plane of the transducer (mm; e.g., due to a gel pad or silicone spacer)
-- `focal_distance_list`, `flhm_list`: paired lists of focal distance and corresponding focal length at half maximum (FLHM) values (mm), from the calibration report. For single-element (fixed-focus) transducers these can be single-value lists; for steerable/multi-element transducers, PlanTUS fits a cubic curve through these points to estimate FLHM at any focal distance actually used.
+- `focal_distance_list`, `flhm_list`: paired lists of focal distance and corresponding focal length at half maximum (FLHM) values (mm), from the calibration report. For single-element (fixed-focus) transducers these can be single-value lists; for steerable/multi-element transducers, PlanTUS fits a cubic curve through these points to estimate FLHM at any focal distance actually used. **Make sure this list covers the range of focal distances you'll actually encounter** — the fitted curve is not bounded, and evaluating it well outside the calibrated range can produce unrealistic FLHM values.
 
 **2) User-defined metric weights** — how much each geometric criterion contributes to the overall "quality" score computed for every point on the head surface (see [Output reference](#output-reference)):
 - `weight_skin_target_distances`
@@ -134,15 +142,18 @@ The YAML file has three logical sections:
 
 Each weight must be in `[0, 1]` and, conventionally, the five weights sum to 1. Setting a weight to 0 removes that criterion from the composite score; increasing a weight makes PlanTUS favor placements that score well on that particular criterion.
 
-**3) Setup** — local installation paths:
-- `connectome_wb_path`: path to your Connectome Workbench `bin_<platform>` folder (e.g., `/usr/local/workbench/bin_linux64`)
-
 **Optional keys:**
+- `output_folder`: base directory to write PlanTUS' `PlanTUS/<ROI-name>` output folder under. If omitted, defaults to the m2m folder (next to the `.msh` file) — the same location PlanTUS has always used.
 - `IDTarget`: a custom label used to name output files/folders for a given placement (falls back to `vtx<N>`, the vertex number, if omitted)
-- `bUseGenericTransducerModel`: if `true`, PlanTUS generates a simple cylindrical placeholder transducer model instead of using a pre-made one (see [transducer models](#transducer-models) below)
 
 **Example (`PlanTUS_config_CTX-545.yaml`):**
 ```yaml
+# Output ------------------------------------------------------------------------
+# Optional: base directory to write PlanTUS' "PlanTUS/<ROI_name>" output
+# folder under. If omitted (or left blank), defaults to the m2m folder
+# (next to the .msh file), i.e. the same location PlanTUS has always used.
+# output_folder: /path/to/custom/output/base
+
 # Transducer-specific variables ------------------------------------------------
 max_distance: 76.6
 min_distance: 33.1
@@ -160,14 +171,14 @@ weight_skin_target_angles: 0.2
 weight_skin_target_intersections: 0.2
 weight_skin_skull_angles: 0.2
 weight_skull_thickness: 0.2
-# Setup --------------------------------------------------------------------------
-connectome_wb_path: /usr/local/workbench/bin_linux64
 ```
 
 Copy one of the provided templates, rename it after your transducer, adjust the calibration values, and point `PlanTUS_wrapper.py` at it.
 
 ### Transducer models
-By default, PlanTUS uses the bundled 3D model of a NeuroFUS CTX-500-4 transducer (`resources/transducer_models/TRANSDUCER-NEUROFUS-CTX-500-4_DEVICE.surf.gii`) for visualization purposes, positioned and oriented according to the metrics computed for your selected placement. If you set `bUseGenericTransducerModel: true` in your config, PlanTUS instead generates a simple cylinder of the correct aperture (`transducer_diameter`) and offset (`plane_offset` + `additional_offset`) — useful if you don't have (or don't need) a device-specific 3D model. Note that this only affects the *visualization* of the transducer; it has no effect on the underlying trajectory/position calculations.
+PlanTUS generates a simple cylindrical transducer model, sized to your config's `transducer_diameter` (aperture) and `plane_offset` + `additional_offset` (height), and applies the selected placement's pose to it before exporting. This is the only transducer model PlanTUS uses — there's no device-specific 3D model bundled or configurable, and no config key to choose one; the geometry only affects visualization/export, not the underlying trajectory/position calculations. The live preview shown while picking a placement in the viewer matches this model's real dimensions.
+
+*(Earlier versions bundled a NeuroFUS CTX-500-4 model and let you switch to a generic cylinder via `bUseGenericTransducerModel`; both the bundled model and that config key have been removed — see [`CHANGELOG.md`](./CHANGELOG.md).)*
 
 ---
 
@@ -197,29 +208,28 @@ PlanTUS also automatically identifies no-go / avoidance regions (grey areas on t
 
 ## 3. Select transducer position(s)
 
-The aforementioned metrics will be visualized in **Connectome Workbench** on the 3D-reconstructed head surface:
+Unless `--skip_viewer` was given, PlanTUS opens its own interactive viewer window once the metrics above have been computed. The window shows four head-surface panels (Distance, Target Intersection, Transducer Tilt, Skin-Skull Angle — switchable via the dropdown above each panel) plus two oblique volume-view panels on the right, following the trajectory into the head.
 
-<img src="https://github.com/user-attachments/assets/df3d85c4-4056-4bb6-99aa-23b82feb822d" width="800" />
+*[Screenshot of the current viewer window to be added here.]*
 
-To select a potential transducer placement, simply click on the head surface wherever you would like to place the transducer. A small white sphere will appear at the respective position, marking the position of the transducer center on the head surface. The volume view (right) then allows you to check the intersection between the target region and an idealized acoustic beam trajectory (blue/green straight line) going from that position into the brain (oblique viewing option).
+**To select a placement, right-click anywhere on the head surface** — no separate "selection mode" toggle needed; left-click/drag still rotates the view as normal. The viewer opens with a suggested initial placement already shown (the vertex with the best composite score), which you're free to override by right-clicking elsewhere.
 
-<img src="https://github.com/user-attachments/assets/cf6c9517-e4d4-444f-97b5-d49475feafd9" width="800" />
+On picking a vertex:
+- A semi-transparent transducer model (body + a handle/cable indicator) appears at the placement, oriented along the beam axis toward the target. Use the **Transducer rotation** slider to adjust roll around that axis before saving.
+- The two volume-view panels update to follow the trajectory, showing the estimated intracranial focus (an ellipsoid sized from your transducer's focal-distance/FLHM calibration) and the target ROI (green outline).
+- A small marker dot is dropped on the head surface at the picked vertex. Dots from earlier picks in the same session are **not** removed by picking again — "Remove Placement Markers" clears them explicitly; "Remove Transducer Model" hides just the live preview model.
 
-After clicking on a position, you will be asked (in the terminal) whether you want to generate a transducer placement for the selected position. If you answer "no", nothing happens and you can continue selecting other positions. If you answer "yes", PlanTUS computes and exports the full set of placement outputs for that vertex (see [Output reference](#output-reference)) and a new Connectome Workbench window pops up (see below).
+Click **Save Placement** to write the full set of output files for the current vertex (see [Output reference](#output-reference)) — this does **not** close the window, so you can keep picking and saving further candidate placements in the same session. The window only closes when you close it yourself.
 
-> If you already know which vertex/triangle you want (e.g., from a previous run, or scripted across subjects), you can skip the interactive step entirely with `--do_only_trajectory <N>`.
+Preset camera buttons (Top / Front / Lateral Right / Lateral Left / Oblique Right / Oblique Left) are available in the toolbar, along with a Screenshot button that saves the current window contents as a PNG.
+
+> If you already know which vertex/triangle you want (e.g., from a previous run, or scripted across subjects), you can skip the interactive step entirely with `--placement_only <N>`.
 
 ---
 
 ## 4. Evaluate transducer and (estimated) focus position
 
-After selecting a position, a new Connectome Workbench window pops up that shows the resulting transducer placement (left) and a simplified representation of the expected acoustic focus (red outline) overlaid on the target mask (green) and anatomical MR image (volume view on the right).
-
-<img src="https://github.com/user-attachments/assets/44b4f69a-df07-47eb-8858-e0da64af2172" width="800" />
-
-The oblique volume view (right) will help you to evaluate the expected on- vs. off-target stimulation in terms of overlap between the simplified acoustic focus and the target region.
-
-<img src="https://github.com/user-attachments/assets/72fd9a0a-f7dc-461f-82db-82ea601e2751" width="800" />
+The transducer model and estimated acoustic focus shown live in the viewer (step 3) are the same evaluation previously done in a separate step after generation — there's no second window to open. The oblique volume-view panels let you evaluate the expected on- vs. off-target stimulation in terms of overlap between the estimated focus (ellipsoid) and the target region (green outline) before you commit to saving a placement.
 
 ---
 
@@ -247,28 +257,28 @@ See [Output reference](#output-reference) for the complete, per-format list of e
 
 ---
 
-## 6. Review acoustic simulation results
+## 6. Reviewing k-Plan simulation results
 
-Eventually, acoustic simulation results (e.g., acoustic pressure maps, thermal dose) can be loaded and evaluated in the same environment (Connectome Workbench), overlaid on your anatomical image. White outlines in the volume view (right) indicate the borders of the target region.
+> **Note:** Earlier versions of PlanTUS supported loading k-Plan simulation results back into Connectome Workbench for review, overlaid on your anatomical image. Since Workbench is no longer a dependency, this reviewing step is **not currently built into PlanTUS' own viewer** — you'll need a separate NIfTI viewer of your choice (e.g., FSLeyes, ITK-SNAP, 3D Slicer) to inspect the files described below.
 
-<img src="https://github.com/user-attachments/assets/77ef1860-d809-4b43-a60a-c712257150ee" width="800" />
+PlanTUS can still convert **k-Plan**'s native HDF5 (`.h5`) simulation output into standard NIfTI volumes, registered to a CT image, via `PlanTUS.kPlan_results_to_nifti(h5_filepath, CT_filepath)`. This isn't currently wired to a `PlanTUS_wrapper.py` command-line flag — call it directly from Python, e.g.:
 
-Again, the oblique volume view (right) can help you to evaluate on- vs. off-target stimulation in terms of overlap between the simulated acoustic focus and the target region (indicated by white outline).
+```python
+import sys
+sys.path.append("code")  # or wherever code/PlanTUS.py lives
+import PlanTUS
+PlanTUS.kPlan_results_to_nifti("/path/to/simulation_results.h5", "/path/to/CT.nii.gz")
+```
 
-<img src="https://github.com/user-attachments/assets/b1502848-d858-41ee-93a7-7cc3ab297e0b" width="800" />
-
-### New: importing k-Plan simulation results (HDF5 + CT)
-
-To bring **k-Plan** simulation results back into this environment for review, PlanTUS can now read k-Plan's native HDF5 (`.h5`) output directly — this is a new input modality alongside the T1/mesh/ROI inputs used for planning. You additionally need:
-
+You additionally need:
 - the k-Plan simulation results file (`.h5`), containing (at minimum) the medium mask and, per sonication, the simulated pressure amplitude and thermal dose fields, and
 - a **CT image** of the same participant, in whichever space you want the results resampled into (k-Plan simulations are computed on a CT-derived acoustic medium, so a CT — rather than the T1 — is the natural common reference here).
 
-Internally, PlanTUS:
-1. Reads the medium mask and, for each sonication, the pressure-amplitude and thermal-dose volumes out of the `.h5` file (using the grid spacing stored in the file to reconstruct a NIfTI-compatible affine),
+Internally, this function:
+1. reads the medium mask and, for each sonication, the pressure-amplitude and thermal-dose volumes out of the `.h5` file (using the grid spacing stored in the file to reconstruct a NIfTI-compatible affine),
 2. registers the medium mask to your CT image using an ANTs rigid+scaling transform (`TRSAA`),
 3. applies that same transform to the pressure-amplitude and thermal-dose volumes, and
-4. writes out three CT-aligned `.nii.gz` volumes per sonication (medium mask, acoustic pressure, thermal dose), ready to load into Connectome Workbench next to your T1 and target ROI for the on- vs. off-target review shown above.
+4. writes out three CT-aligned `.nii.gz` volumes per sonication (medium mask, acoustic pressure, thermal dose) — see [Output reference](#output-reference).
 
 This requires the `h5py` and `antspyx` (`ants`) Python packages (see [Dependencies](#dependencies)).
 
@@ -280,7 +290,7 @@ All outputs are written into a per-target folder:
 ```
 <m2m_subject>/PlanTUS/<ROI-name>/
 ```
-(named after your ROI file, so different targets in the same subject don't overwrite each other).
+(named after your ROI file, so different targets in the same subject don't overwrite each other; override the base directory with `output_folder` in your config — see [Configure PlanTUS](#1-configure-plantus).)
 
 ### Whole-head surface outputs (generated once per ROI, before you pick a position)
 | File | Description |
@@ -288,32 +298,34 @@ All outputs are written into a per-target folder:
 | `skin.surf.gii`, `skull.surf.gii` | Reconstructed skin and skull surfaces (GIFTI), extracted from the SimNIBS mesh |
 | `avoidance_skin.func.gii` | Per-vertex 0/1 mask marking no-go regions (eyes, ears, air cavities/sinuses, below head height) |
 | `distances_skin.func.gii`, `distances_skin_thresholded.func.gii` | Distance (mm) from each skin vertex to the target region's center of gravity; thresholded version restricts to vertices within `max_distance` |
-| `angles_skin.func.gii` | Angle (degrees) between the skin surface normal and the skin→target vector at each vertex |
+| `angles_skin.func.gii` | Angle (degrees) between the skin surface normal and the skin→target vector at each vertex — shown as "Transducer Tilt" in the viewer |
 | `target_intersection_skin.func.gii` | Length (mm) of the idealized straight-line beam's intersection with the target region, per vertex |
 | `skin_skull_angles_skin.func.gii` | Angle (degrees) between skin and skull surface normals at each vertex (angle of incidence) |
 | `skull_thickness_skin.func.gii`, `skull_thickness_skull.func.gii` | Estimated skull thickness (mm) under each vertex |
 | `composite_TargetDistance<..>_TargetAngle<..>_TargetIntersection<..>_SkinSkullAngle<..>_SkullThickness<..>_skin.func.gii` | The combined, weighted composite quality score per vertex (see below), with the weights used baked into the filename for traceability |
 | `<ROI-name>_3Dmodel.stl` | Triangulated 3D surface of the target ROI, used for the beam-intersection calculations |
-| `scene.scene` | Connectome Workbench scene file tying the above together for the interactive planning view |
 
 **How the composite score is built:** each of the five raw metrics (skin–target distance, tilt angle, beam–target intersection length, skin–skull angle, skull thickness) is rescaled to a `[0, 1]` "utility" (with distance evaluated relative to your transducer's `optimal_distance`, not just `max_distance`), zeroed out for vertices beyond `max_distance` or inside an avoidance region, weighted by your config's `weight_*` values, and combined via a weighted geometric mean — so a very poor score on one criterion can't be fully compensated for by good scores elsewhere, and a vertex missing on any required criterion scores 0 overall.
 
-### Per-position outputs (generated after you select and confirm a vertex)
+### Per-position outputs (generated after you select and save a vertex)
 Written into a subfolder named after `IDTarget` (or `vtx<N>` if not set):
 
 | File | Format / destination | Description |
 |---|---|---|
-| `position_matrix_<roi>_<ID>_Localite.mat` / `.txt` | Localite | 4×4 affine transform defining the transducer pose, in Localite convention (mm) |
-| `position_matrix_<roi>_<ID>_Localite_XML.txt` | Localite | Ready-to-paste XML `<InstrumentMarker>` snippet for Localite's target file |
-| `position_matrix_<roi>_<ID>_kPlan.mat` / `.txt` | k-Plan | Same pose converted to k-Plan's axis convention and units (meters) |
-| `<roi>_<ID>.kps` | k-Plan | HDF5 transducer-position file that recreates the exact placement when imported into k-Plan |
-| `trajectory_<roi>_<ID>_Brainsight.txt` | Brainsight | Trajectory file in Brainsight's native format |
-| `trajectory_<roi>_<ID>_BabelBrain.txt` | BabelBrain | Trajectory file adapted for BabelBrain (target recentered on the ROI's center of gravity) |
-| `transducer_<roi>_<ID>.surf.gii` | visualization | The transducer 3D model (device-specific or generic cylinder), transformed to the selected pose |
-| `focus_<roi>_<ID>_<focal_distance>.surf.gii` / `.nii.gz` | visualization | Simplified ellipsoidal representation of the expected acoustic focus (surface and binary volume), sized from the FLHM at the estimated focal distance |
-| `scene.scene` | visualization | Connectome Workbench scene tying transducer + focus + T1 + ROI together for the placement-review view |
+| `<roi>_<ID>_PositionMatrix_Localite.mat` / `.txt` | Localite | 4×4 affine transform defining the transducer pose, in Localite convention (mm) |
+| `<roi>_<ID>_TransducerPosition_Localite_dummyXML.txt` | Localite | Ready-to-paste XML `<InstrumentMarker>` snippet for Localite's target file |
+| `<roi>_<ID>_PositionMatrix_kPlan.mat` / `.txt` | k-Plan | Same pose converted to k-Plan's axis convention and units (meters) |
+| `<roi>_<ID>_TransducerPosition_kPlan.kps` | k-Plan | HDF5 transducer-position file that recreates the exact placement when imported into k-Plan |
+| `<roi>_<ID>_Trajectory_Brainsight.txt` | Brainsight | Trajectory file in Brainsight's native format |
+| `<roi>_<ID>_Trajectory_BabelBrain.txt` | BabelBrain | Trajectory file adapted for BabelBrain (target recentered on the ROI's center of gravity) |
+| `<roi>_<ID>_PositionMatrix_Transducer.txt` | visualization | Pose transform (mm) used to place the transducer 3D model |
+| `<roi>_<ID>_TransducerModel.surf.gii` | visualization | The transducer 3D model (device-specific or generic cylinder), transformed to the selected pose |
+| `<roi>_<ID>_PositionMatrix_Focus.txt` | visualization | Pose transform (mm) used to place the estimated-focus ellipsoid |
+| `<roi>_<ID>_Focus_<focal_distance>mm.surf.gii` / `.nii.gz` | visualization | Simplified ellipsoidal representation of the expected acoustic focus (surface and binary volume), sized from the FLHM at the estimated focal distance |
 
-### k-Plan simulation-review outputs (step 6, new)
+> **Filenames changed in v2.0** — see [`CHANGELOG.md`](./CHANGELOG.md) for the old→new mapping if you have scripts depending on the previous naming.
+
+### k-Plan simulation-review outputs (step 6)
 Per sonication `i` found in the imported `.h5` file, written alongside it:
 | File | Description |
 |---|---|
@@ -326,8 +338,10 @@ Per sonication `i` found in the imported `.h5` file, written alongside it:
 # Tips & troubleshooting
 - **One config file per transducer, reused across subjects.** Keep subject-specific paths (`t1`, `mesh`, `roi`) out of the config file entirely — they're supplied on the command line instead, so the same config works for every participant scanned with that transducer.
 - **Weights don't have to be equal.** If, e.g., minimizing skull thickness matters far more for your setup than tilt angle, raise `weight_skull_thickness` and lower `weight_skin_target_angles` (keep the five roughly summing to 1 for comparable composite scores across runs).
-- **Batch/headless use.** Combine `--do_only_trajectory <N>` with `--skip_wb_view` to (re-)generate all export files for a known vertex without ever opening Connectome Workbench — handy for re-exporting after a config change, or for scripting across many subjects/positions.
-- **`--use_internal_viewer` is optional**, not required — if you don't need PlanTUS' own VTK viewer, skip installing `PyQt5`/`vtk` altogether.
+- **You can save several placements in one session.** The viewer stays open after "Save Placement" — right-click a new vertex and save again as many times as you like before closing the window.
+- **Batch/headless use.** Combine `--placement_only <N>` with `--skip_viewer` to (re-)generate all export files for a known vertex without opening the viewer at all — handy for re-exporting after a config change, or for scripting across many subjects/positions.
+- **Re-running on the same inputs.** Use `--overwrite` or `--reuse_existing` to skip the interactive y/n prompt when PlanTUS detects it's already been run for the same T1/mesh/ROI/config combination.
+- **Make sure your FLHM calibration covers your actual working distances.** `focal_distance_list`/`flhm_list` are fit with an unconstrained cubic curve — evaluating it well outside the calibrated range can produce unrealistic FLHM/focus-size values.
 - **k-Plan compatibility starts before `charm`.** The T1→MNI/ACPC alignment and origin correction (`ImageTransform_4kPlan.py`) must be done *before* running SimNIBS' `charm`, not after — charm needs to run on the already-corrected image.
 - Remember: **PlanTUS is a heuristic planning aid, not a validated acoustic simulator.** Always confirm any selected placement with proper acoustic simulation software (k-Plan, k-Wave, BabelBrain, …) before sonicating.
 

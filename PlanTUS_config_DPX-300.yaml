@@ -8,10 +8,10 @@ transducer_diameter: 64.0
 # Maximum allowed angle for tilting of TUS transducer (in degrees)
 max_angle: 15.0
 # Offset between radiating surface and exit plane of transducer (in mm)
-plane_offset: 10.82
+plane_offset: 3.5
 # Additional offset between skin and exit plane of transducer (in mm;
 # e.g., due to addtional gel/silicone pad)
-additional_offset: 3.0
+additional_offset: 10.0
 # Focal distance and corresponding FLHM values (both in mm) according to, e.g.,
 # calibration report
 focal_distance_list:
@@ -42,7 +42,4 @@ weight_skin_target_angles: 0.2
 weight_skin_target_intersections: 0.2
 weight_skin_skull_angles: 0.2
 weight_skull_thickness: 0.2
-# Setup ------------------------------------------------------------------------
-# Path to connectome workbench binaries
-connectome_wb_path: /usr/local/workbench/bin_linux64
 
