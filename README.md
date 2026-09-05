@@ -58,7 +58,6 @@ h5py
 trimesh        # surface reconstruction/smoothing
 vtk            # 3D rendering (the interactive viewer, always used)
 PyQt5          # GUI for the interactive viewer (PySide6 also supported, tried first)
-antspyx        # imported as `ants`; needed for k-Plan result registration and ImageTransform_4kPlan.py
 ```
 
 Optional:
@@ -71,7 +70,7 @@ You can install these into your SimNIBS conda environment with, e.g.:
 
 ```bash
 conda activate simnibs_env
-pip install nilearn pyyaml h5py trimesh vtk PyQt5 antspyx potpourri3d
+pip install nilearn pyyaml h5py trimesh vtk PyQt5 potpourri3d
 ```
 
 ---
@@ -210,7 +209,8 @@ PlanTUS also automatically identifies no-go / avoidance regions (grey areas on t
 
 Unless `--skip_viewer` was given, PlanTUS opens its own interactive viewer window once the metrics above have been computed. The window shows four head-surface panels (Distance, Target Intersection, Transducer Tilt, Skin-Skull Angle — switchable via the dropdown above each panel) plus two oblique volume-view panels on the right, following the trajectory into the head.
 
-*[Screenshot of the current viewer window to be added here.]*
+<img src="https://github.com/user-attachments/assets/7a71ff06-2d42-430c-9161-bf2b01bd4377" width="1000" />
+
 
 **To select a placement, right-click anywhere on the head surface** — no separate "selection mode" toggle needed; left-click/drag still rotates the view as normal. The viewer opens with a suggested initial placement already shown (the vertex with the best composite score), which you're free to override by right-clicking elsewhere.
 
@@ -245,42 +245,11 @@ PlanTUS outputs several files for further use with different…
 
 See [Output reference](#output-reference) for the complete, per-format list of exported files.
 
-**k-Plan example**: The selected transducer placement can be easily imported into the k-Plan software (https://k-plan.io/), using the `.kps` output file, for validating the heuristically selected transducer placement with proper acoustic simulations.
+**k-Plan**: The selected transducer placement can be easily imported into the k-Plan software (https://k-plan.io/), using the `.kps` output file, for validating the heuristically selected transducer placement with proper acoustic simulations.
 
-<img src="https://github.com/user-attachments/assets/ef43e905-1466-4dc3-9e69-ccefa266d8fa" width="800" />
-
-**Localite example**: The selected transducer placement can be easily imported into the Localite neuronavigation software (https://www.localite.de/en/products/tms-navigator/) as a target for transducer navigation (i.e., instrument marker), using the exported XML snippet.
-
-<img src="https://github.com/user-attachments/assets/123bb35e-965e-4993-a2f6-9ec445bbe2ba" width="800" />
+**Localite**: The selected transducer placement can be easily imported into the Localite neuronavigation software (https://www.localite.de/en/products/tms-navigator/) as a target for transducer navigation (i.e., instrument marker), using the exported XML snippet.
 
 **Brainsight and BabelBrain**: PlanTUS also exports ready-to-import trajectory text files for Rogue Research's Brainsight and for [BabelBrain](https://github.com/ProteusMRIgHIFU/BabelBrain), using the same underlying pose but written in each tool's expected trajectory format.
-
----
-
-## 6. Reviewing k-Plan simulation results
-
-> **Note:** Earlier versions of PlanTUS supported loading k-Plan simulation results back into Connectome Workbench for review, overlaid on your anatomical image. Since Workbench is no longer a dependency, this reviewing step is **not currently built into PlanTUS' own viewer** — you'll need a separate NIfTI viewer of your choice (e.g., FSLeyes, ITK-SNAP, 3D Slicer) to inspect the files described below.
-
-PlanTUS can still convert **k-Plan**'s native HDF5 (`.h5`) simulation output into standard NIfTI volumes, registered to a CT image, via `PlanTUS.kPlan_results_to_nifti(h5_filepath, CT_filepath)`. This isn't currently wired to a `PlanTUS_wrapper.py` command-line flag — call it directly from Python, e.g.:
-
-```python
-import sys
-sys.path.append("code")  # or wherever code/PlanTUS.py lives
-import PlanTUS
-PlanTUS.kPlan_results_to_nifti("/path/to/simulation_results.h5", "/path/to/CT.nii.gz")
-```
-
-You additionally need:
-- the k-Plan simulation results file (`.h5`), containing (at minimum) the medium mask and, per sonication, the simulated pressure amplitude and thermal dose fields, and
-- a **CT image** of the same participant, in whichever space you want the results resampled into (k-Plan simulations are computed on a CT-derived acoustic medium, so a CT — rather than the T1 — is the natural common reference here).
-
-Internally, this function:
-1. reads the medium mask and, for each sonication, the pressure-amplitude and thermal-dose volumes out of the `.h5` file (using the grid spacing stored in the file to reconstruct a NIfTI-compatible affine),
-2. registers the medium mask to your CT image using an ANTs rigid+scaling transform (`TRSAA`),
-3. applies that same transform to the pressure-amplitude and thermal-dose volumes, and
-4. writes out three CT-aligned `.nii.gz` volumes per sonication (medium mask, acoustic pressure, thermal dose) — see [Output reference](#output-reference).
-
-This requires the `h5py` and `antspyx` (`ants`) Python packages (see [Dependencies](#dependencies)).
 
 ---
 
