@@ -34,8 +34,7 @@ PlanTUS helps users of transcranial ultrasonic stimulation (TUS) to interactivel
 
 # Dependencies
 
-PlanTUS is a Python tool that wraps [SimNIBS](https://simnibs.github.io/simnibs/) meshes. Visualization and interactive planning are handled entirely by PlanTUS' own PyQt/VTK-based viewer — **Connectome Workbench is not required.**
-
+PlanTUS is a Python tool that wraps [SimNIBS](https://simnibs.github.io/simnibs/) meshes. Visualization and interactive planning are handled entirely by PlanTUS' own PyQt/VTK-based viewer.
 ### External software
 | Software | Purpose | Link |
 |---|---|---|
@@ -120,7 +119,7 @@ If existing results are found and neither `--overwrite` nor `--reuse_existing` i
 
 ### Config file design and contents
 
-Each transducer typically gets its **own config file** (e.g., `PlanTUS_config_CTX-545.yaml` for a NeuroFUS CTX-545 transducer, `PlanTUS_config_DPX-300.yaml` for a NeuroFUS DPX-300 transducer — both provided in this repository as templates). This keeps calibration data (focal-distance/FLHM curves, aperture size, etc.) tied to hardware rather than to a subject, so the same config file can be reused across all participants sonicated with that transducer.
+Each transducer typically gets its **own config file** (e.g., `PlanTUS_config_CTX-545.yaml` for a NeuroFUS CTX-545 transducer, `PlanTUS_config_DPX-300.yaml` for a NeuroFUS DPX-300 transducer — both provided in this repository as templates). This keeps calibration data (focal distance/FLHM curves, aperture size, etc.) tied to hardware rather than to a subject, so the same config file can be reused across all participants sonicated with that transducer.
 
 The YAML file has three logical sections:
 
