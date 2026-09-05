@@ -276,7 +276,7 @@ All outputs are written into a per-target folder:
 
 **How the composite score is built:** each of the five raw metrics (skin–target distance, tilt angle, beam–target intersection length, skin–skull angle, skull thickness) is rescaled to a `[0, 1]` "utility" (with distance evaluated relative to your transducer's `optimal_distance`, not just `max_distance`), zeroed out for vertices beyond `max_distance` or inside an avoidance region, weighted by your config's `weight_*` values, and combined via a weighted geometric mean — so a very poor score on one criterion can't be fully compensated for by good scores elsewhere, and a vertex missing on any required criterion scores 0 overall.
 
-### Per-position outputs (generated after you select and save a vertex)
+### Position-specific outputs (generated after you select and save a vertex)
 Written into a subfolder named after `IDTarget` (or `vtx<N>` if not set):
 
 | File | Format / destination | Description |
@@ -293,14 +293,6 @@ Written into a subfolder named after `IDTarget` (or `vtx<N>` if not set):
 | `<roi>_<ID>_Focus_<focal_distance>mm.surf.gii` / `.nii.gz` | visualization | Simplified ellipsoidal representation of the expected acoustic focus (surface and binary volume), sized from the FLHM at the estimated focal distance |
 
 > **Filenames changed in v2.0** — see [`CHANGELOG.md`](./CHANGELOG.md) for the old→new mapping if you have scripts depending on the previous naming.
-
-### k-Plan simulation-review outputs (step 6)
-Per sonication `i` found in the imported `.h5` file, written alongside it:
-| File | Description |
-|---|---|
-| `<h5-name>_MediumMask_Sonication<i>.nii.gz` | Acoustic medium mask, registered to your CT |
-| `<h5-name>_AcousticPressure_Sonication<i>.nii.gz` | Simulated acoustic pressure amplitude field, registered to your CT |
-| `<h5-name>_ThermalDose_Sonication<i>.nii.gz` | Simulated thermal dose field, registered to your CT |
 
 ---
 
