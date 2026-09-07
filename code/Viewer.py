@@ -467,12 +467,20 @@ class GiftiViewer(QWidget):
 
         self.vtkWidget.GetRenderWindow().Render()
 
-    def show_transducer(self, pick_pos, vertex_normal, roll_degrees=0.0):
+    def show_transducer(self, pick_pos, vertex_normal, roll_degrees=0.0, orientation_mode="target_centered"):
         """Show a generic cylinder + handle-rod glyph at the picked placement.
 
         Approximates any real/custom transducer_surface_model — uses
         native VTK primitives rather than loading/transforming the
         actual GIFTI model on each pick, so it stays responsive.
+
+        orientation_mode mirrors PlanTUS.prepare_acoustic_simulation()'s
+        own parameter of the same name exactly, so the live preview
+        matches whichever mode will actually be used at generation time:
+        - "target_centered" (default): beam axis aimed at the target
+          ROI's centroid.
+        - "vertex_normal": beam axis aimed along the local skin surface
+          normal instead — not necessarily at the target.
 
         - the transducer's CENTER sits `additional_offset + offset`
           (additional_offset + plane_offset) mm from the skin surface,
@@ -503,16 +511,20 @@ class GiftiViewer(QWidget):
             return
         normal = normal / norm_len
 
-        # Aim at the target centroid — matches
-        # prepare_acoustic_simulation()'s vertex_vector, which always
-        # aims at the centroid now (previously used the raw skin normal
-        # instead when there was a direct intersection). This affects
-        # both the beam axis AND the standoff position below (the real
-        # formula computes transducer_center_coordinates using this same
-        # vector, not the raw skin normal), so both need to follow it,
-        # not just orientation. Falls back to the skin normal if the
-        # target centroid isn't available for any reason.
-        if self.target_center is not None:
+        if orientation_mode == "vertex_normal":
+            # Aimed along the local skin normal — not necessarily at
+            # the target centroid. Matches
+            # prepare_acoustic_simulation()'s "vertex_normal" mode.
+            inward = -normal
+        elif self.target_center is not None:
+            # "target_centered" (default): aim at the target centroid.
+            # Matches prepare_acoustic_simulation()'s vertex_vector for
+            # that mode. This affects both the beam axis AND the
+            # standoff position below (the real formula computes
+            # transducer_center_coordinates using this same vector, not
+            # the raw skin normal), so both need to follow it, not just
+            # orientation. Falls back to the skin normal if the target
+            # centroid isn't available for any reason.
             to_target = self.target_center - pick_pos
             to_target_norm = np.linalg.norm(to_target)
             inward = to_target / to_target_norm if to_target_norm > 0 else -normal
@@ -708,6 +720,19 @@ class MultiGiftiViewerWidget(QWidget):
         self.rollLabel = QLabel("0°")
         self.toolbar.addWidget(self.rollLabel)
 
+        # Orientation mode: how the beam axis is aimed at the picked
+        # vertex — mirrors PlanTUS.prepare_acoustic_simulation()'s own
+        # orientation_mode parameter exactly (same two string values),
+        # so this choice determines both what's shown live here and
+        # what actually gets generated on "Save Placement".
+        self.toolbar.addWidget(QLabel("     Orientation:"))
+        self.orientation_mode = "target_centered"  # default, per case 1
+        self.orientationComboBox = QComboBox()
+        self.orientationComboBox.addItem("Towards target center", "target_centered")
+        self.orientationComboBox.addItem("Along surface normal", "vertex_normal")
+        self.orientationComboBox.currentIndexChanged.connect(self.set_orientation_mode)
+        self.toolbar.addWidget(self.orientationComboBox)
+
         self.toolbar.addWidget(QLabel("     "))
         self.heatmap_checkbox = QCheckBox("Show masked maps")
         self.heatmap_checkbox.setChecked(True)  # default ON
@@ -740,15 +765,27 @@ class MultiGiftiViewerWidget(QWidget):
         oblique_left_action.triggered.connect(lambda: self.set_preset_view("oblique_left"))
         self.toolbar.addAction(oblique_left_action)
 
-        # Expanding spacer pushes everything after it to the far right
-        # of the toolbar/window.
-        spacer = QWidget()
-        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        self.toolbar.addWidget(spacer)
+        # Align the Screenshot button's right edge with row 1's right
+        # edge (which now ends at "Oblique Left", the last item added
+        # above) — estimated from sizeHint()s, the same mechanism
+        # already used above to match the two "Remove ..." buttons'
+        # widths, since nothing is actually shown/laid out yet at
+        # __init__ time to measure real pixel positions from.
+        # markers_leading_width is measured BEFORE adding the
+        # Screenshot action/spacer, so it only reflects "Remove
+        # Placement Markers" (already width-matched above).
+        row1_width = self.toolbar.sizeHint().width()
+        markers_leading_width = self.markersToolbar.sizeHint().width()
 
         screenshot_action = QAction("Screenshot", self)
         screenshot_action.triggered.connect(self.save_screenshot)
-        self.toolbar.addAction(screenshot_action)
+        self.markersToolbar.addAction(screenshot_action)
+        screenshot_width = self.markersToolbar.widgetForAction(screenshot_action).sizeHint().width()
+
+        needed_spacer_width = max(0, row1_width - markers_leading_width - screenshot_width)
+        spacer = QWidget()
+        spacer.setFixedWidth(int(needed_spacer_width))
+        self.markersToolbar.insertWidget(screenshot_action, spacer)
 
         # Hook up selection synchronization
         for v in self.viewers:
@@ -811,9 +848,10 @@ class MultiGiftiViewerWidget(QWidget):
                 self.broadcast_selection(initial_vertex, cell_id, pick_pos, vertex_normal)
 
     def GenerateTrajectory(self):
-        print("Generating trajectory... for vertex id",self.select_vertex, "roll:", self.transducer_roll_degrees)
+        print("Generating trajectory... for vertex id",self.select_vertex, "roll:", self.transducer_roll_degrees,
+              "orientation_mode:", self.orientation_mode)
         if self.callBackAfterGenTrajectory:
-            self.callBackAfterGenTrajectory(self.select_vertex, self.transducer_roll_degrees)
+            self.callBackAfterGenTrajectory(self.select_vertex, self.transducer_roll_degrees, self.orientation_mode)
 
     # --------------------------
     # Methods from MainWindow
@@ -841,6 +879,10 @@ class MultiGiftiViewerWidget(QWidget):
         self.rollSlider.setValue(0)
         self.rollSlider.blockSignals(False)
         self.rollLabel.setText("0°")
+        self.orientation_mode = "target_centered"
+        self.orientationComboBox.blockSignals(True)
+        self.orientationComboBox.setCurrentIndex(0)
+        self.orientationComboBox.blockSignals(False)
         self.generateTrajectoryPushButton.setEnabled(False)
         self.generateTrajectoryPushButton.setStyleSheet("""
             QPushButton {
@@ -868,7 +910,21 @@ class MultiGiftiViewerWidget(QWidget):
         self.rollLabel.setText(f"{value}°")
         if self.current_pick_pos is not None:
             for v in self.viewers:
-                v.show_transducer(self.current_pick_pos, self.current_vertex_normal, self.transducer_roll_degrees)
+                v.show_transducer(self.current_pick_pos, self.current_vertex_normal,
+                                  self.transducer_roll_degrees, self.orientation_mode)
+
+    def set_orientation_mode(self, index):
+        """Called when the Orientation dropdown changes — re-renders the
+        current placement (transducer glyph and volume/focus view) with
+        the new orientation mode, if a vertex is currently selected."""
+        self.orientation_mode = self.orientationComboBox.itemData(index)
+        if self.current_pick_pos is not None:
+            for v in self.viewers:
+                v.show_transducer(self.current_pick_pos, self.current_vertex_normal,
+                                  self.transducer_roll_degrees, self.orientation_mode)
+            if self.volume_focus_viewer is not None:
+                self.volume_focus_viewer.update_view(self.select_vertex, self.current_pick_pos,
+                                                     self.current_vertex_normal, self.orientation_mode)
 
     def broadcast_selection(self, vertex, cell_id, pick_pos, vertex_normal):
         """Called when one viewer selects a triangle."""
@@ -877,9 +933,9 @@ class MultiGiftiViewerWidget(QWidget):
         self.current_vertex_normal = vertex_normal
         for v in self.viewers:
             v.highlight_triangle(cell_id, pick_pos)
-            v.show_transducer(pick_pos, vertex_normal, self.transducer_roll_degrees)
+            v.show_transducer(pick_pos, vertex_normal, self.transducer_roll_degrees, self.orientation_mode)
         if self.volume_focus_viewer is not None:
-            self.volume_focus_viewer.update_view(vertex, pick_pos, vertex_normal)
+            self.volume_focus_viewer.update_view(vertex, pick_pos, vertex_normal, self.orientation_mode)
         #once a valid triangle is selected, enable the button
         self.generateTrajectoryPushButton.setEnabled(True)
         self.generateTrajectoryPushButton.setStyleSheet("""
@@ -1758,7 +1814,7 @@ class VolumeFocusViewer(QWidget):
                 pass
         return 10.0  # fallback default (mm) if calibration data isn't available
 
-    def update_view(self, vertex_index, pick_pos, vertex_normal):
+    def update_view(self, vertex_index, pick_pos, vertex_normal, orientation_mode="target_centered"):
         pick_pos = np.asarray(pick_pos, dtype=float)
         normal = np.asarray(vertex_normal, dtype=float)
         norm_len = np.linalg.norm(normal)
@@ -1766,13 +1822,12 @@ class VolumeFocusViewer(QWidget):
             return
         normal = normal / norm_len
 
-        # Aim at the target centroid — matches
-        # prepare_acoustic_simulation()'s vertex_vector, which always
-        # aims at the centroid now (previously used the raw skin normal
-        # instead when there was a direct intersection). See
-        # GiftiViewer.show_transducer for the full rationale. Falls back
-        # to the skin normal if the target centroid isn't available.
-        if self.target_center is not None:
+        # orientation_mode mirrors PlanTUS.prepare_acoustic_simulation()'s
+        # own parameter of the same name — see GiftiViewer.show_transducer
+        # for the full rationale on both modes.
+        if orientation_mode == "vertex_normal":
+            inward = -normal
+        elif self.target_center is not None:
             to_target = self.target_center - pick_pos
             to_target_norm = np.linalg.norm(to_target)
             inward = to_target / to_target_norm if to_target_norm > 0 else -normal

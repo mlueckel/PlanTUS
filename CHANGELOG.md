@@ -54,6 +54,17 @@ The planning step now opens PlanTUS' own PyQt5/VTK viewer by default (no externa
 
 Optionally set `output_folder` in your config YAML to write PlanTUS' `PlanTUS/<ROI>` output folder somewhere other than the default (next to the subject's `.msh` file, in the m2m folder). Omit it to keep the previous default location.
 
+### New: choice of beam orientation
+
+Previously, the transducer's beam axis at a chosen skin vertex was always aimed exactly at the target ROI's center of gravity. You can now choose between two orientation modes via the viewer's **Orientation** dropdown (or the new `orientation_mode` argument to `PlanTUS.prepare_acoustic_simulation()`, for scripted/`--placement_only` use):
+
+- **Towards target center** *(default, previous/only behavior)* — the beam axis is aimed exactly at the target ROI's center of gravity, regardless of the local skin surface normal.
+- **Along surface normal** — the beam axis is aimed along the (negated) local skin surface normal instead, which is not necessarily aimed at the target center.
+
+The live preview (transducer glyph, volume/focus view) updates immediately when you switch modes, matching what will actually be generated.
+
+**BabelBrain export note:** BabelBrain's trajectory format anchors the placement at a single coordinate, with the beam axis defining the trajectory direction from there. In "Towards target center" mode this anchor is the target ROI's center of gravity, as before — self-consistent, since the axis passes through exactly that point by construction. In "Along surface normal" mode, anchoring at the target center would be inconsistent (axis and anchor would describe two different lines), so the anchor is instead: the midpoint of the beam's intersection with the target ROI, if it intersects at all; otherwise a point along the trajectory at the estimated focal distance.
+
 ### Fixed
 
 - Skull-thickness computation no longer re-extracts the skull surface from the subject's `.msh` file a second time (was previously done redundantly).
