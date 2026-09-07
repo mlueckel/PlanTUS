@@ -569,12 +569,12 @@ if args.placement_only<0:
     DlgResults.setLayout(layout)
     DlgResults.resize(1700, 700)
 
-    def CallBackGenerateTrajectory(selection, roll_degrees):
+    def CallBackGenerateTrajectory(selection, roll_degrees, orientation_mode):
         # Generates immediately for the current placement and does NOT
         # close the dialog — the user can keep picking and generating
         # further placements in the same session; the window only
         # closes when they explicitly close it (native window controls).
-        print('Generating trajectory for ID', selection, ' roll:', roll_degrees)
+        print('Generating trajectory for ID', selection, ' roll:', roll_degrees, ' orientation_mode:', orientation_mode)
         PlanTUS.prepare_acoustic_simulation(selection,
                                             output_path,
                                             target_roi_filepath,
@@ -591,7 +591,8 @@ if args.placement_only<0:
                                             placement_scene_template_filepath,
                                             ID=IDTarget,
                                             skip_viewer=True,
-                                            roll_degrees=roll_degrees)
+                                            roll_degrees=roll_degrees,
+                                            orientation_mode=orientation_mode)
 
     # Suggest an initial placement: the vertex with the best (highest)
     # composite metric score, immediately visualized when the viewer

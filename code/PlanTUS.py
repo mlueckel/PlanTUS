@@ -982,12 +982,21 @@ def export_Brainsight_trajectory(SimNIBS_position_matrix: np.ndarray,
 
 
 def export_BabelBrain_trajectory(SimNIBS_position_matrix: np.ndarray,
-                                 target_center_coordinates: Sequence[float],
+                                 anchor_coordinates: Sequence[float],
                                  output_filepath: str):
-    """Export trajectory text file for BabelBrain."""
+    """Export trajectory text file for BabelBrain.
+
+    anchor_coordinates is the point BabelBrain's trajectory format
+    anchors the placement at — the target ROI's center of gravity when
+    the beam axis is aimed exactly there ("target_centered" mode), or
+    a point actually on the trajectory line otherwise (see
+    prepare_acoustic_simulation's "vertex_normal" mode) — anchoring at
+    the target center while the axis points elsewhere would describe
+    two different lines, which BabelBrain has no way to reconcile.
+    """
 
     BabelBrain_position_matrix = SimNIBS_position_matrix.copy()
-    BabelBrain_position_matrix[0:3,3] = target_center_coordinates
+    BabelBrain_position_matrix[0:3,3] = anchor_coordinates
 
     simnibs.brainsight().write(np.squeeze(BabelBrain_position_matrix), output_filepath, overwrite=True)
 
@@ -1328,8 +1337,30 @@ def prepare_acoustic_simulation(vertex_number: int,
                                 placement_scene_template_filepath: str,
                                 ID="",
                                 skip_viewer=False,
-                                roll_degrees: float = 0.0) -> None:
-    """End-to-end preparation for one candidate vertex (simulation folder)."""
+                                roll_degrees: float = 0.0,
+                                orientation_mode: str = "target_centered") -> None:
+    """End-to-end preparation for one candidate vertex (simulation folder).
+
+    orientation_mode controls how the transducer's beam axis (vertex_vector)
+    is oriented at the chosen skin vertex:
+    - "target_centered" (default): aimed exactly at the target ROI's
+      center of gravity, regardless of the local skin surface normal.
+      Self-consistent with BabelBrain's exported trajectory, which
+      anchors the placement at the target ROI's center — since the
+      beam axis passes through that exact point by construction here.
+    - "vertex_normal": aimed along the (negated) skin surface normal at
+      the chosen vertex instead — not necessarily aimed at the target
+      center. Since BabelBrain's trajectory format anchors the
+      placement at a point ON the trajectory, using the target ROI's
+      center for that anchor here would be geometrically inconsistent
+      (the axis and the anchor would describe two different lines) —
+      so in this mode, the BabelBrain anchor point is instead: the
+      midpoint of the beam's intersection with the target ROI, if it
+      intersects it at all; otherwise a point along the trajectory at
+      the estimated focal distance (a well-defined but, in this
+      non-intersecting case, essentially arbitrary point along the
+      line, since there's no principled "correct" anchor available).
+    """
     import scipy
 
     if len(ID)==0:
@@ -1372,15 +1403,34 @@ def prepare_acoustic_simulation(vertex_number: int,
 
     # --- Vertex of interest
     vertex_coordinates = skin_coordinates[vertex_number]
-    # Always aim at the target centroid (previously used the raw skin
-    # normal instead when there was a direct line-of-sight intersection
-    # with the target — but that normal isn't necessarily aimed at the
-    # centroid, which made every export's orientation column
-    # inconsistent with a translation swapped to the centroid, e.g.
-    # export_BabelBrain_trajectory(). skin_target_intersection_values is
-    # still computed above and still used below for focal_distance —
-    # only this orientation choice changes.
-    vertex_vector = unit_vector(-skin_target_vectors[vertex_number])
+    if orientation_mode == "vertex_normal":
+        # Aimed along the local skin normal — not necessarily at the
+        # target center. See docstring above re: the BabelBrain anchor
+        # point handling this requires further down.
+        vertex_vector = unit_vector(-skin_normals[vertex_number])
+    else:
+        # "target_centered" (default): always aim at the target
+        # centroid. skin_target_intersection_values is still computed
+        # above and still used below for focal_distance — only this
+        # orientation choice varies with orientation_mode.
+        vertex_vector = unit_vector(-skin_target_vectors[vertex_number])
+
+    # --- Focal distance & FLHM
+    # Moved earlier (was after the transducer-model/.kps export block)
+    # so inter_center is available below for the BabelBrain trajectory
+    # anchor point too, without duplicating this computation.
+    if skin_target_intersection_values[vertex_number] == 0:
+        target_center = roi_center_of_gravity(target_roi_filepath)
+        skin_target_distances = distance_between_surface_and_point(os.path.join(output_path, "skin.surf.gii"), target_center)
+        focal_distance = float(skin_target_distances[vertex_number] + additional_offset)
+        inter_center = None
+    else:
+        inter_center = (np.asarray(skin_target_intersections[vertex_number][0]) +
+                        np.asarray(skin_target_intersections[vertex_number][1])) / 2.0
+        focal_distance = float(np.linalg.norm(skin_coordinates[vertex_number] - inter_center) + additional_offset)
+
+    focal_distance = max(min(focal_distance, max_distance), min_distance)
+    FLHM = compute_FLHM_for_focal_distance(focal_distance, focal_distance_list, flhm_list)
 
     # --- Localite pose for the transducer
     transducer_center_coordinates = vertex_coordinates - ((offset + additional_offset) * vertex_vector)
@@ -1411,9 +1461,25 @@ def prepare_acoustic_simulation(vertex_number: int,
     export_Brainsight_trajectory(position_matrix_SimNIBS,
                                  os.path.join(output_path_vtx, f"{target_roi_name}_{suffix}_Trajectory_Brainsight.txt"))
 
-    target_center_coordinates = roi_center_of_gravity(target_roi_filepath)
+    if orientation_mode == "vertex_normal":
+        # Axis isn't necessarily aimed at the target center here, so
+        # anchoring BabelBrain's placement there (as the
+        # "target_centered" mode does below) would be geometrically
+        # inconsistent — the axis and the anchor would describe two
+        # different lines. Anchor at a point actually ON the
+        # trajectory instead: the intersection midpoint if the beam
+        # crosses the target, otherwise a point along the trajectory
+        # at the estimated focal distance (reuses inter_center /
+        # focal_distance already computed above).
+        if inter_center is not None:
+            babelbrain_anchor_coordinates = inter_center
+        else:
+            babelbrain_anchor_coordinates = vertex_coordinates + focal_distance * vertex_vector
+    else:
+        babelbrain_anchor_coordinates = roi_center_of_gravity(target_roi_filepath)
+
     export_BabelBrain_trajectory(position_matrix_SimNIBS,
-                                 target_center_coordinates,
+                                 babelbrain_anchor_coordinates,
                                  os.path.join(output_path_vtx, f"{target_roi_name}_{suffix}_Trajectory_BabelBrain.txt"))
 
     # --- Optional: transform transducer model
@@ -1438,19 +1504,6 @@ def prepare_acoustic_simulation(vertex_number: int,
         os.path.join(output_path_vtx, f"{target_roi_name}_{suffix}_PositionMatrix_kPlan.mat"),
         f"{target_roi_name}_{suffix}_TransducerPosition_kPlan"
     )
-
-    # --- Focal distance & FLHM
-    if skin_target_intersection_values[vertex_number] == 0:
-        target_center = roi_center_of_gravity(target_roi_filepath)
-        skin_target_distances = distance_between_surface_and_point(os.path.join(output_path, "skin.surf.gii"), target_center)
-        focal_distance = float(skin_target_distances[vertex_number] + additional_offset)
-    else:
-        inter_center = (np.asarray(skin_target_intersections[vertex_number][0]) +
-                        np.asarray(skin_target_intersections[vertex_number][1])) / 2.0
-        focal_distance = float(np.linalg.norm(skin_coordinates[vertex_number] - inter_center) + additional_offset)
-
-    focal_distance = max(min(focal_distance, max_distance), min_distance)
-    FLHM = compute_FLHM_for_focal_distance(focal_distance, focal_distance_list, flhm_list)
 
     # --- Ellipsoid (surface)
     focus_transform = np.loadtxt(os.path.join(output_path_vtx, f"{target_roi_name}_{suffix}_PositionMatrix_kPlan.txt"))

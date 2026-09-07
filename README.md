@@ -215,9 +215,10 @@ Unless `--skip_viewer` was given, PlanTUS opens its own interactive viewer windo
 **To select a placement, right-click anywhere on the head surface** — no separate "selection mode" toggle needed; left-click/drag still rotates the view as normal. The viewer opens with a suggested initial placement already shown (the vertex with the best composite score), which you're free to override by right-clicking elsewhere.
 
 On picking a vertex:
-- A semi-transparent transducer model (body + a handle/cable indicator) appears at the placement, oriented along the beam axis toward the target. Use the **Transducer rotation** slider to adjust roll around that axis before saving.
+- A semi-transparent transducer model (body + a handle/cable indicator) appears at the placement. Use the **Transducer rotation** slider to adjust roll around the beam axis before saving.
+- The **Orientation** dropdown controls how that beam axis is aimed: **Towards target center** (default) aims exactly at the target ROI's center of gravity, regardless of local skin curvature; **Along surface normal** aims along the local skin surface normal instead, which is not necessarily towards the target. Switching modes updates the live preview immediately.
 - The two volume-view panels update to follow the trajectory, showing the estimated intracranial focus (an ellipsoid sized from your transducer's focal-distance/FLHM calibration) and the target ROI (green outline).
-- A small marker dot is dropped on the head surface at the picked vertex. Dots from earlier picks in the same session are **not** removed by picking again — "Remove Placement Markers" clears them explicitly; "Remove Transducer Model" hides just the live preview model.
+- A small marker dot is dropped on the head surface at the picked vertex. Dots from earlier picks in the same session are **not** removed by picking again — "Remove Placement Markers" clears them explicitly; "Remove Transducer Model" hides just the live preview model (and resets rotation and orientation back to their defaults).
 
 Click **Save Placement** to write the full set of output files for the current vertex (see [Output reference](#output-reference)) — this does **not** close the window, so you can keep picking and saving further candidate placements in the same session. The window only closes when you close it yourself.
 
@@ -317,7 +318,7 @@ Written into a subfolder named after `IDTarget` (or `vtx<N>` if not set):
 | `<roi>_<ID>_PositionMatrix_kPlan.mat` / `.txt` | k-Plan | Same pose converted to k-Plan's axis convention and units (meters) |
 | `<roi>_<ID>_TransducerPosition_kPlan.kps` | k-Plan | HDF5 transducer-position file that recreates the exact placement when imported into k-Plan |
 | `<roi>_<ID>_Trajectory_Brainsight.txt` | Brainsight | Trajectory file in Brainsight's native format |
-| `<roi>_<ID>_Trajectory_BabelBrain.txt` | BabelBrain | Trajectory file adapted for BabelBrain (target recentered on the ROI's center of gravity) |
+| `<roi>_<ID>_Trajectory_BabelBrain.txt` | BabelBrain | Trajectory file adapted for BabelBrain — anchored at the target ROI's center of gravity in "Towards target center" mode, or at a point along the trajectory itself (the beam-target intersection midpoint, or a point at the estimated focal distance if it doesn't intersect) in "Along surface normal" mode — see the [Orientation](#3-select-transducer-positions) note above and [`CHANGELOG.md`](./CHANGELOG.md) |
 | `<roi>_<ID>_PositionMatrix_Transducer.txt` | visualization | Pose transform (mm) used to place the transducer 3D model |
 | `<roi>_<ID>_TransducerModel.surf.gii` | visualization | The transducer 3D model (device-specific or generic cylinder), transformed to the selected pose |
 | `<roi>_<ID>_PositionMatrix_Focus.txt` | visualization | Pose transform (mm) used to place the estimated-focus ellipsoid |
