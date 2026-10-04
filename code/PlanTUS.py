@@ -1001,12 +1001,17 @@ def export_BabelBrain_trajectory(SimNIBS_position_matrix: np.ndarray,
     simnibs.brainsight().write(np.squeeze(BabelBrain_position_matrix), output_filepath, overwrite=True)
 
     with open(output_filepath, 'r') as file:
-      filedata = file.read()
+      filelines = file.readlines()
+    # Rename the '000' target name written by SimNIBS. Only the first column of
+    # the trajectory line may be touched: replacing '000' over the whole file
+    # would also corrupt numeric values containing it (e.g. '0.0000').
+    filelines = ['PlanTUS transducer position' + line[len('000'):] if line.startswith('000\t') else line
+                 for line in filelines]
+    filedata = ''.join(filelines)
     filedata = filedata.replace('NIfTI:Aligned', 'Brainsight')
     filedata = filedata.replace('SimNIBS v4.5.0', 'PlanTUS')
     filedata = filedata.replace('# Units: millimetres, degrees, milliseconds, and microvolts',
                                 '# X=right->left, Y=anterior->posterior, Z=inferior->superior\n# Units: millimetres, degrees, milliseconds, and microvolts')
-    filedata = filedata.replace('000', 'PlanTUS transducer position')
     with open(output_filepath, 'w') as file:
       file.write(filedata)
 
