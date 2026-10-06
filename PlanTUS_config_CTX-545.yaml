@@ -46,4 +46,9 @@ weight_skin_target_angles: 0.2
 weight_skin_target_intersections: 0.2
 weight_skin_skull_angles: 0.2
 weight_skull_thickness: 0.2
-
+# Additional options ------------------------------------------------------------
+# Optional: base directory for PlanTUS' "PlanTUS/<ROI_name>" output folder
+# (default: the m2m folder next to the .msh file)
+# output_folder: /path/to/custom/output/base
+# Optional: Taubin smoothing iterations for the skin surface (default 2, 0 = off)
+# skin_smoothing_iterations: 2
