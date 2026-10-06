@@ -15,6 +15,7 @@ Dependencies
 from __future__ import annotations
 
 import os
+import re
 import glob
 import shutil
 import subprocess
@@ -100,6 +101,81 @@ def subtract_nifti(in_a: str, in_b: str, out_path: str) -> None:
     hdr_a, A, aff_a = _load_nii(in_a)
     _, B, _ = _load_nii(in_b)
     save_like(hdr_a, aff_a, (A - B).astype(np.float32), out_path)
+
+
+def _seal_cropped_fov_faces(vol: np.ndarray, threshold: float = 0.05):
+    """Seal (set to True/tissue) any image face where a meaningful
+    fraction of voxels are already tissue — a strong signal that the
+    field of view is cropped through anatomy at that face (e.g. a T1
+    that doesn't extend far past the neck), rather than ending in
+    genuinely open exterior space around the head.
+
+    Why this matters: air-filled cavities (sinuses, etc.) are
+    anatomically connected to the outside via the nasal/oral airway.
+    ``scipy.ndimage.binary_fill_holes`` only fills background regions
+    that are NOT reachable from the image border — so if that airway
+    happens to reach a cropped face (a real risk whenever the FOV ends
+    partway down the neck, since the airway runs right through there),
+    the entire connected cavity system escapes detection as a "hole",
+    even though it's a genuine anatomical cavity that should be found.
+    Confirmed directly on real data: one face showed ~49% tissue
+    (a crop straight through the neck) while the other five showed
+    ~0% (genuinely open exterior) — sealing just that one face let
+    binary_fill_holes correctly capture the ~100,000-voxel connected
+    sinus/airway system that was otherwise being missed entirely.
+
+    A genuinely open exterior face should have ~0% tissue touching it
+    (there's empty space between the head and the edge of the FOV);
+    threshold=0.05 leaves comfortable margin above that while still
+    catching a crop through anatomy, which tends to show a much larger
+    fraction (near-symmetric cuts through a mix of tissue/air, as seen
+    on the real data above, showed ~49%).
+
+    Returns the sealed volume and the list of face index-tuples that
+    were sealed (so the caller can undo the seal in that specific
+    region afterward — this is only meant to influence connectivity
+    for hole-detection, not to actually add tissue there).
+    """
+    sealed = vol.copy()
+    sealed_faces = []
+    for axis in range(3):
+        for sl in (slice(0, 1), slice(-1, None)):
+            idx = [slice(None)] * 3
+            idx[axis] = sl
+            idx = tuple(idx)
+            if vol[idx].mean() > threshold:
+                sealed[idx] = True
+                sealed_faces.append(idx)
+    return sealed, sealed_faces
+
+
+def _fill_holes_axial(vol: np.ndarray, affine: np.ndarray) -> np.ndarray:
+    """Fill holes slice by slice (2-D) along the voxel axis that runs
+    closest to world superior-inferior (found from the affine, so this is
+    orientation-agnostic: it works for LAS/RAS, FreeSurfer-style LIA,
+    oblique volumes, ...).
+
+    Why: the paranasal sinuses, nasal cavity and pharynx form one air
+    system that is open to the outside (nostrils, and often the airway
+    running out of the bottom of the segmented neck). In 3-D that makes
+    them part of the exterior, so ``binary_fill_holes`` on the volume
+    never treats them as holes — confirmed on a SimNIBS example subject
+    (ernie), where the 3-D fill recovered only ~8 mL of air (essentially
+    just the mastoids) while ~99 mL of cavity was present, leaving the
+    skin over the frontal sinuses unmarked. In an axial slice, however,
+    the same cavities are enclosed by tissue all around (above the
+    nostril level), so a 2-D fill captures them.
+    """
+    from scipy import ndimage
+
+    axis = int(np.argmax(np.abs(affine[2, :3])))
+    out = np.zeros_like(vol, dtype=bool)
+    for k in range(vol.shape[axis]):
+        idx = [slice(None)] * 3
+        idx[axis] = k
+        idx = tuple(idx)
+        out[idx] = ndimage.binary_fill_holes(vol[idx])
+    return out
 
 
 # -----------------------------------------------------------------------------
@@ -207,7 +283,8 @@ def create_scene(scene_template_filepath: str,
 def convert_simnibs_mesh_to_surfaces(simnibs_mesh_filepath: str,
                                      tags: Sequence[int],
                                      mesh_name: str,
-                                     output_path: str) -> None:
+                                     output_path: str,
+                                     smoothing_iterations: int = 0) -> None:
     """Extract tagged compartment from SimNIBS mesh and write as STL + GIFTI.
 
     Parameters
@@ -220,6 +297,20 @@ def convert_simnibs_mesh_to_surfaces(simnibs_mesh_filepath: str,
         Basename for output files.
     output_path : str
         Destination directory.
+    smoothing_iterations : int, optional
+        Number of Taubin-smoothing iterations to apply to the surface
+        before writing it out (default 0 = no smoothing, preserving
+        the raw SimNIBS-extracted geometry exactly as before). Uses
+        the same trimesh.smoothing.filter_taubin call (lamb=0.5,
+        nu=0.5) already used elsewhere in this module (see
+        stl_from_nii) — Taubin rather than plain Laplacian smoothing,
+        since Laplacian shrinks/drifts small or coarsely-triangulated
+        meshes, which Taubin's alternating pos/neg steps largely
+        avoid. A small number of iterations (a handful, not the 10
+        used for the much smaller/coarser air-cavity or ROI meshes
+        elsewhere) is enough to knock down segmentation-level mesh
+        noise on a surface this size without eroding real anatomical
+        detail (nose, ears, eye sockets).
 
     Outputs
     -------
@@ -247,12 +338,24 @@ def convert_simnibs_mesh_to_surfaces(simnibs_mesh_filepath: str,
     tri_mask = (mesh.elm.elm_type == 2).ravel()
     faces = mesh.elm.node_number_list[tri_mask, :3].astype(np.int32) - 1  # (M, 3)
 
+    if smoothing_iterations > 0:
+        import trimesh
+        tmesh = trimesh.Trimesh(vertices=vertices, faces=faces, process=False)
+        trimesh.smoothing.filter_taubin(tmesh, lamb=0.5, nu=0.5, iterations=smoothing_iterations)
+        vertices = np.asarray(tmesh.vertices, dtype=np.float32)
+        faces = np.asarray(tmesh.faces, dtype=np.int32)
+
     # write gifti
     _write_gifti_surface(vertices, faces, gii_out)
 
     # Write STL directly ------------------------------------------------------
     stl_out = os.path.join(output_path, f"{mesh_name}.stl")
-    mesh_io.write_stl(mesh, stl_out)
+    if smoothing_iterations > 0:
+        # Keep the STL consistent with the (now smoothed) GIFTI above,
+        # rather than writing the original unsmoothed mesh.
+        tmesh.export(stl_out)
+    else:
+        mesh_io.write_stl(mesh, stl_out)
 
 
 def surf_gii_to_stl_with_simnibs(in_gii: str, out_stl: str, tag: int = 1):
@@ -302,6 +405,49 @@ def _load_gifti_mesh(surface_filepath: str):
     faces = np.asarray(gii.darrays[1].data, dtype=np.int64)
     mesh = trimesh.Trimesh(vertices=vertices, faces=faces, process=False)
     return vertices, faces, mesh
+
+
+def fraction_of_points_inside_volume(points_mm: np.ndarray, volume_filepath: str,
+                                     margin_mm: float = 5.0) -> Tuple[float, np.ndarray, np.ndarray]:
+    """Fraction of `points_mm` (N,3, world mm) lying inside the world-space
+    bounding box of a NIfTI volume (grown by `margin_mm`), plus that box's
+    (min, max) corners. Uses nibabel's affine — the same convention the
+    SimNIBS mesh, the ROI and all PlanTUS volume outputs use."""
+    img = nib.load(volume_filepath)
+    n = np.array(img.shape[:3]) - 1
+    corners = np.array([[x, y, z] for x in (0, n[0]) for y in (0, n[1]) for z in (0, n[2])])
+    world = nib.affines.apply_affine(img.affine, corners)
+    lo, hi = world.min(axis=0) - margin_mm, world.max(axis=0) + margin_mm
+    inside = np.all((points_mm >= lo) & (points_mm <= hi), axis=1)
+    return float(inside.mean()), lo, hi
+
+
+def check_t1_mesh_consistency(t1_filepath: str, skin_surf_filepath: str,
+                              min_fraction: float = 0.95) -> bool:
+    """Warn (never abort) if the skin surface doesn't lie inside the T1's
+    world-space extent — i.e. the T1 and the SimNIBS mesh don't appear to
+    share a coordinate space (typically: the T1 passed isn't the one charm
+    was run on). Everything built on the T1 grid (slice views, focus
+    volumes, scene files) would then be misplaced relative to the mesh.
+
+    A skin surface derived from this T1 lies inside its FOV by construction
+    (up to a voxel at a cropped edge, hence the margin); a genuine mismatch
+    is typically tens of mm off, far beyond that.
+    """
+    vertices = np.asarray(nib.load(skin_surf_filepath).darrays[0].data, dtype=np.float64)
+    frac, lo, hi = fraction_of_points_inside_volume(vertices, t1_filepath)
+    if frac >= min_fraction:
+        return True
+    print("\n" + "!" * 78)
+    print(f"WARNING: only {frac*100:.0f}% of the skin surface lies inside the T1's world-space extent.")
+    print(f"  T1 extent (mm):   x[{lo[0]:.0f},{hi[0]:.0f}] y[{lo[1]:.0f},{hi[1]:.0f}] z[{lo[2]:.0f},{hi[2]:.0f}]")
+    print(f"  skin extent (mm): x[{vertices[:,0].min():.0f},{vertices[:,0].max():.0f}] "
+          f"y[{vertices[:,1].min():.0f},{vertices[:,1].max():.0f}] z[{vertices[:,2].min():.0f},{vertices[:,2].max():.0f}]")
+    print("  The T1 and the SimNIBS mesh do not appear to share a coordinate space, so slice")
+    print("  views and T1-grid outputs will be misaligned. Use the same T1 that charm was run")
+    print("  on (e.g. m2m_<subject>/T1.nii.gz).")
+    print("!" * 78 + "\n")
+    return False
 
 
 def _write_functional_gifti(values: np.ndarray, out_path: str, structure: Optional[str] = None) -> None:
@@ -526,27 +672,51 @@ def compute_vector_mesh_intersections(points: np.ndarray,
     Returns
     -------
     intersections : list[list[tuple]]
-        For each ray a list of hit points (x,y,z).
+        For each ray a list of hit points (x,y,z), ordered by distance
+        from the ray origin, with coincident hits (same surface point
+        reported more than once, e.g. at a shared triangle edge/vertex or
+        when the origin lies on the mesh) merged into one.
+
+    Notes
+    -----
+    Uses vtkStaticCellLocator rather than vtkOBBTree. vtkOBBTree's
+    IntersectWithLine silently drops a large share of intersections on
+    VTK 9.7.x (measured on a SimNIBS skull mesh: ~27% of skin->skull rays
+    reported a hit vs 72% with the other locators, and the count even
+    varied from run to run on identical input), and it also misses the
+    occasional hit on older versions (cross-checked against trimesh's
+    ray casting). Every ray-based metric here (target intersection, skull
+    thickness, skin-skull angle, the air-cavity no-go mask, focal-distance
+    estimates) goes through this function, so a silent undercount would
+    corrupt all of them without any error. The static cell locator gave
+    identical, trimesh-consistent results on VTK 9.3.1 through 9.7.1.
     """
     import vtk  # type: ignore
 
     mesh = load_stl(mesh_filepath)
 
-    obb = vtk.vtkOBBTree()
-    obb.SetDataSet(mesh)
-    obb.BuildLocator()
+    locator = vtk.vtkStaticCellLocator()
+    locator.SetDataSet(mesh)
+    locator.BuildLocator()
+
+    dedup_tol = 1e-3  # mm; far below any real spacing between distinct surfaces
 
     hits: List[List[Tuple[float, float, float]]] = []
     for i in range(len(points)):
         p0 = points[i]
         p1 = points[i] - vector_length * vectors[i]
         pts = vtk.vtkPoints()
-        _ = obb.IntersectWithLine(p0, p1, pts, None)
+        locator.IntersectWithLine(p0, p1, 1e-6, pts, None)
         dat = pts.GetData()
         n = dat.GetNumberOfTuples()
+        raw = [dat.GetTuple3(j) for j in range(n)]
+        if n > 1:
+            p0a = np.asarray(p0, dtype=float)
+            raw.sort(key=lambda h: float(np.linalg.norm(np.asarray(h) - p0a)))
         ray_hits: List[Tuple[float, float, float]] = []
-        for j in range(n):
-            ray_hits.append(dat.GetTuple3(j))
+        for h in raw:
+            if not ray_hits or np.linalg.norm(np.asarray(h) - np.asarray(ray_hits[-1])) > dedup_tol:
+                ray_hits.append(h)
         hits.append(ray_hits)
     return hits
 
@@ -597,7 +767,17 @@ def create_avoidance_mask(simnibs_mesh_filepath: str,
     if len(vol.shape) == 4:
         vol = vol[:, :, :, 0]
     aff = img.affine
-    filled = ndimage.binary_fill_holes(vol, se_n)
+    vol_bool = vol.astype(bool)
+    vol_sealed, sealed_faces = _seal_cropped_fov_faces(vol_bool)
+    filled = ndimage.binary_fill_holes(vol_sealed, se_n)
+    # Cavities open to the exterior in 3-D (sinuses/nasal cavity via the
+    # nostrils/airway) are enclosed in axial slices — see _fill_holes_axial.
+    filled |= _fill_holes_axial(vol_bool, aff)
+    for idx in sealed_faces:
+        # Undo the seal in the final result — it's only meant to
+        # affect connectivity for hole-detection, not to actually add
+        # tissue in that region.
+        filled[idx] = vol_bool[idx]
     filled_out = nib.Nifti1Image(filled.astype(np.uint16), aff)
     nib.save(filled_out, filled_path)
 
@@ -659,9 +839,25 @@ def create_avoidance_mask(simnibs_mesh_filepath: str,
     avoidance_mask[np.linalg.norm((skin_coords - LPA), axis=1) < 15] = 0
     avoidance_mask[np.linalg.norm((skin_coords - RPA), axis=1) < 15] = 0
 
-    # everything below eye-height/2
+    # Everything below halfway between the eyes and the head's own
+    # lowest point. Previously: mean_eye_z / 2 — an absolute halving of
+    # a coordinate value, which only gives a sensible "somewhere below
+    # the eyes" cutoff if Z=0 happens to sit at some fixed anatomical
+    # reference (e.g. the base of the neck) — not guaranteed by any
+    # NIfTI/mesh coordinate convention. Confirmed on a real dataset
+    # where the coordinate origin sits well above the eyes: halving
+    # actually pushed the cutoff ABOVE eye-level (since mean_eye_z was
+    # negative, halving it made it less negative), excluding 29% of the
+    # head including a region above the eyes, rather than the intended
+    # "below the eyes" region. This version is guaranteed to never sit
+    # above eye-level (0 <= 0.5*(mean_eye_z - head_zmin), since eyes
+    # are anatomically above the head's own lowest skin point) and is
+    # relative to the head's own geometry rather than an absolute
+    # coordinate value with no guaranteed anatomical meaning.
+    head_zmin = skin_coords[:, 2].min()
     mean_eye_z = ((left_c + right_c) / 2)[2]
-    avoidance_mask[skin_coords[:, 2] <= (mean_eye_z / 2)] = 0
+    eye_height_cutoff = mean_eye_z - 0.5 * (mean_eye_z - head_zmin)
+    avoidance_mask[skin_coords[:, 2] <= eye_height_cutoff] = 0
 
     # Save as metric on surface and erode
     create_metric_from_pseudo_nifti("avoidance", avoidance_mask, surface_filepath)
@@ -872,6 +1068,10 @@ def add_structure_information(filepath: str, structure_label: str) -> None:
 # Localite / Brainsight / BabelBrain / k-Plan utilities
 # -----------------------------------------------------------------------------
 
+# Small fixed rotation added whenever a roll of exactly 0/180/360
+# degrees would otherwise be used — see deterministic_perpendicular_frame.
+_ROLL_SAFETY_NUDGE_DEGREES = 1.0
+
 def deterministic_perpendicular_frame(primary_axis: Sequence[float],
                                       roll_degrees: float = 0.0) -> Tuple[np.ndarray, np.ndarray]:
     """Build two vectors perpendicular to `primary_axis`, deterministically
@@ -880,12 +1080,34 @@ def deterministic_perpendicular_frame(primary_axis: Sequence[float],
     rotation around `primary_axis`.
 
     At roll_degrees=0, the first returned vector is
-    normalize(cross(reference, primary_axis)), where `reference` is
-    (0,0,1) unless that's nearly parallel to `primary_axis` (then
-    (0,1,0)) — the same convention Viewer.py's live-preview transducer
-    glyph uses (see _trajectory_frame there), so a given roll angle
-    means the same physical orientation in the preview and in the
-    actual generated position matrices.
+    normalize(cross(reference, primary_axis)), where `reference` is a
+    fixed, non-axis-aligned vector (unless that's nearly parallel to
+    primary_axis, in which case a second fixed non-axis-aligned
+    fallback is used instead).
+
+    `reference` is deliberately NOT a coordinate axis like (0,0,1): the
+    cross product of any vector with an axis-aligned reference is
+    always exactly perpendicular to that axis too, which forces one
+    component of the result to be an exact 0.0 at roll_degrees=0 (and
+    180) for essentially any primary_axis — confirmed (via a stress
+    test across thousands of random directions) to disappear entirely
+    once the reference isn't axis-aligned. This was a real, reproducible
+    bug: BabelBrain failed to load exported trajectories at the default
+    roll of 0 degrees because of exactly this exact-zero matrix entry —
+    a new failure mode versus the old np.random.randn(3)-based roll
+    choice, which essentially never produced an exact zero.
+
+    On top of that: even after the above fix, roll_degrees values of
+    exactly 0, 180, or 360 are nudged by a small fixed offset
+    (_ROLL_SAFETY_NUDGE_DEGREES) before building the frame — a
+    defensive belt-and-suspenders measure requested after a report
+    that 0-degree roll was still producing a faulty BabelBrain
+    trajectory. The nudge is applied here, centrally, so it
+    automatically covers both the actual generated position matrices
+    AND Viewer.py's live preview (which calls this same function) —
+    the preview's roll slider/label are driven by the user's own
+    selected value and are unaffected, so the UI still reads "0 degrees"
+    even though the underlying geometry uses a tiny nonzero rotation.
 
     Returns
     -------
@@ -894,10 +1116,13 @@ def deterministic_perpendicular_frame(primary_axis: Sequence[float],
     """
     import math
 
+    if roll_degrees % 180.0 == 0.0:
+        roll_degrees = roll_degrees + _ROLL_SAFETY_NUDGE_DEGREES
+
     primary = unit_vector(np.asarray(primary_axis, dtype=float))
-    reference = np.array([0.0, 0.0, 1.0])
+    reference = unit_vector(np.array([1.0, 1.0, 1.0]))
     if abs(np.dot(reference, primary)) > 0.95:
-        reference = np.array([0.0, 1.0, 0.0])
+        reference = unit_vector(np.array([1.0, -1.0, 1.0]))
     base_a = unit_vector(np.cross(reference, primary))
     base_b = np.cross(primary, base_a)  # already unit length (primary, base_a orthonormal)
 
@@ -983,7 +1208,8 @@ def export_Brainsight_trajectory(SimNIBS_position_matrix: np.ndarray,
 
 def export_BabelBrain_trajectory(SimNIBS_position_matrix: np.ndarray,
                                  anchor_coordinates: Sequence[float],
-                                 output_filepath: str):
+                                 output_filepath: str,
+                                 roi_name: str = "PlanTUS transducer position"):
     """Export trajectory text file for BabelBrain.
 
     anchor_coordinates is the point BabelBrain's trajectory format
@@ -993,6 +1219,10 @@ def export_BabelBrain_trajectory(SimNIBS_position_matrix: np.ndarray,
     prepare_acoustic_simulation's "vertex_normal" mode) — anchoring at
     the target center while the axis points elsewhere would describe
     two different lines, which BabelBrain has no way to reconcile.
+
+    roi_name labels the exported trajectory/placement — target ROI
+    name + vertex number by default, from the caller — falls back to
+    a generic label if not given.
     """
 
     BabelBrain_position_matrix = SimNIBS_position_matrix.copy()
@@ -1006,7 +1236,13 @@ def export_BabelBrain_trajectory(SimNIBS_position_matrix: np.ndarray,
     filedata = filedata.replace('SimNIBS v4.5.0', 'PlanTUS')
     filedata = filedata.replace('# Units: millimetres, degrees, milliseconds, and microvolts',
                                 '# X=right->left, Y=anterior->posterior, Z=inferior->superior\n# Units: millimetres, degrees, milliseconds, and microvolts')
-    filedata = filedata.replace('000', 'PlanTUS transducer position')
+    # Was a blind filedata.replace('000', ...) — corrupted any numeric
+    # value containing that digit sequence anywhere (confirmed: matched
+    # inside "0.0000", "1000.5", "100.000", etc.), not just the intended
+    # placeholder token. Matches only a standalone "000" (not adjacent
+    # to a digit or decimal point on either side) instead — verified
+    # against representative matrix-value strings before shipping.
+    filedata = re.sub(r'(?<![\d.])000(?![\d.])', roi_name, filedata)
     with open(output_filepath, 'w') as file:
       file.write(filedata)
 
@@ -1480,7 +1716,8 @@ def prepare_acoustic_simulation(vertex_number: int,
 
     export_BabelBrain_trajectory(position_matrix_SimNIBS,
                                  babelbrain_anchor_coordinates,
-                                 os.path.join(output_path_vtx, f"{target_roi_name}_{suffix}_Trajectory_BabelBrain.txt"))
+                                 os.path.join(output_path_vtx, f"{target_roi_name}_{suffix}_Trajectory_BabelBrain.txt"),
+                                 roi_name=f"{target_roi_name}_{suffix}")
 
     # --- Optional: transform transducer model
     transform = np.loadtxt(os.path.join(output_path_vtx, f"{target_roi_name}_{suffix}_PositionMatrix_kPlan.txt"))
@@ -1519,6 +1756,42 @@ def prepare_acoustic_simulation(vertex_number: int,
     # --- Ellipsoid (volume) via direct rasterization (see voxelize_ellipsoid_in_volume)
     ellipsoid_vol = os.path.join(output_path_vtx, f"{target_roi_name}_{suffix}_Focus_{round(focal_distance,1)}mm.nii.gz")
     voxelize_ellipsoid_in_volume(FLHM, 5, focus_transform_path, t1_filepath, ellipsoid_vol)
+
+    # --- Optional Workbench scene (never opened/required by PlanTUS
+    # itself — just a data file for anyone who wants to inspect this
+    # saved placement in Workbench directly). Paths are absolute rather
+    # than relative to the scene file's own location: fixed folder
+    # depth isn't safe now that output_folder lets the base output
+    # directory sit anywhere. The template's BasePathType=AUTOMATIC
+    # setting means Workbench correctly resolves absolute paths as
+    # absolute regardless of the scene file's own location.
+    skin_surf_filepath = os.path.join(output_path, "skin.surf.gii")
+    scene_variable_names = [
+        'SKIN_SURFACE_FILENAME', 'SKIN_SURFACE_FILEPATH',
+        'T1_FILENAME', 'T1_FILEPATH',
+        'MASK_FILENAME', 'MASK_FILEPATH',
+        'TRANSDUCER_SURFACE_FILENAME', 'TRANSDUCER_SURFACE_FILEPATH',
+        'FOCUS_VOLUME_FILENAME', 'FOCUS_VOLUME_FILEPATH',
+        'FOCUS_SURFACE_FILENAME', 'FOCUS_SURFACE_FILEPATH'
+    ]
+    scene_variable_values = [
+        os.path.basename(skin_surf_filepath), os.path.abspath(skin_surf_filepath),
+        os.path.basename(t1_filepath), os.path.abspath(t1_filepath),
+        os.path.basename(target_roi_filepath), os.path.abspath(target_roi_filepath),
+        os.path.basename(transducer_out), os.path.abspath(transducer_out),
+        os.path.basename(ellipsoid_vol), os.path.abspath(ellipsoid_vol),
+        os.path.basename(ellipsoid_surf), os.path.abspath(ellipsoid_surf),
+    ]
+    try:
+        create_scene(placement_scene_template_filepath,
+                    os.path.join(output_path_vtx, "scene.scene"),
+                    scene_variable_names,
+                    scene_variable_values)
+    except Exception as e:
+        # Purely optional output — never let a missing/unreadable
+        # template (or any other issue building the scene file) fail
+        # the actual placement generation over it.
+        print(f"Warning: could not create Workbench scene file ({e}); skipping.")
 
     # --- Visualize results
     if skip_viewer:

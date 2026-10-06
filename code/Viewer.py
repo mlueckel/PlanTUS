@@ -111,6 +111,59 @@ def _set_cylinder_pose(glyph, center, u, v, n, radius, height):
     glyph['transform'].Modified()
 
 
+def _get_nifti_orientation_matrix(reader):
+    """Get the world-space orientation matrix (rotation/flip +
+    translation, NOT including voxel spacing — VTK stores that
+    separately on the image itself) for a vtkNIFTIImageReader.
+
+    vtkNIFTIImageReader.GetOutput() returns image data in raw
+    voxel-index space (origin (0,0,0), positive spacing) — it does NOT
+    apply the file's actual orientation/translation. That matrix is
+    available separately via GetSFormMatrix()/GetQFormMatrix() and
+    must be applied explicitly (e.g. via SetUserMatrix() on whatever
+    prop renders the image) for it to align correctly with anything
+    else in true anatomical world space (surfaces from a SimNIBS mesh,
+    picked vertex coordinates, etc.) — confirmed directly: without
+    this, a real T1's rendered bounds differed from its true
+    world-space extent by ~90-126mm along different axes, and any
+    reslice plane positioned in true world coordinates would slice
+    through the wrong part of the (still voxel-space-positioned)
+    volume entirely.
+
+    Follows the standard NIfTI convention: prefer the sform if its
+    code is valid (> 0), otherwise the qform, otherwise None (caller
+    should treat as identity/no transform needed).
+    """
+    header = reader.GetNIFTIHeader()
+    if header is not None and header.GetSFormCode() > 0:
+        return reader.GetSFormMatrix()
+    if header is not None and header.GetQFormCode() > 0:
+        return reader.GetQFormMatrix()
+    return None
+
+
+def _get_world_bounds(bounds, matrix):
+    """Transform an axis-aligned (xmin,xmax,ymin,ymax,zmin,zmax) bounds
+    tuple through a 4x4 vtkMatrix4x4 by transforming all 8 corners and
+    taking the min/max of the results — correct for any orientation
+    matrix, including ones with axis flips (which can swap which
+    corner ends up as the min/max along a given axis), not just simple
+    translations. Returns the same 6-tuple format. If matrix is None,
+    returns bounds unchanged.
+    """
+    if matrix is None:
+        return bounds
+    xmin, xmax, ymin, ymax, zmin, zmax = bounds
+    corners = [
+        (x, y, z)
+        for x in (xmin, xmax) for y in (ymin, ymax) for z in (zmin, zmax)
+    ]
+    world_corners = np.array([matrix.MultiplyPoint((x, y, z, 1.0))[:3] for x, y, z in corners])
+    wmin = world_corners.min(axis=0)
+    wmax = world_corners.max(axis=0)
+    return (wmin[0], wmax[0], wmin[1], wmax[1], wmin[2], wmax[2])
+
+
 def _trajectory_frame(normal):
     """Build an orthonormal (u, v, n) frame from a direction n, so u and
     v are each perpendicular to n and to each other."""
@@ -708,7 +761,17 @@ class MultiGiftiViewerWidget(QWidget):
         target_width = markers_button.sizeHint().width()
         self.toolbar.widgetForAction(remove_transducer_action).setFixedWidth(target_width)
 
-        self.toolbar.addWidget(QLabel("  Transducer rotation:"))
+        def _fixed_spacer(width=20):
+            """Equal-width gap between toolbar groups, used everywhere
+            in row 1 instead of ad-hoc leading spaces baked into label
+            text (which gave inconsistent-looking gaps between groups
+            depending on how many spaces each label happened to have)."""
+            spacer = QWidget()
+            spacer.setFixedWidth(width)
+            return spacer
+
+        self.toolbar.addWidget(_fixed_spacer())
+        self.toolbar.addWidget(QLabel("Transducer rotation:"))
         self.transducer_roll_degrees = 0.0
         self.rollSlider = QSlider(Qt.Horizontal)
         self.rollSlider.setMinimum(0)
@@ -725,7 +788,8 @@ class MultiGiftiViewerWidget(QWidget):
         # orientation_mode parameter exactly (same two string values),
         # so this choice determines both what's shown live here and
         # what actually gets generated on "Save Placement".
-        self.toolbar.addWidget(QLabel("     Orientation:"))
+        self.toolbar.addWidget(_fixed_spacer())
+        self.toolbar.addWidget(QLabel("Orientation:"))
         self.orientation_mode = "target_centered"  # default, per case 1
         self.orientationComboBox = QComboBox()
         self.orientationComboBox.addItem("Towards target center", "target_centered")
@@ -733,13 +797,21 @@ class MultiGiftiViewerWidget(QWidget):
         self.orientationComboBox.currentIndexChanged.connect(self.set_orientation_mode)
         self.toolbar.addWidget(self.orientationComboBox)
 
-        self.toolbar.addWidget(QLabel("     "))
+        self.toolbar.addWidget(_fixed_spacer())
         self.heatmap_checkbox = QCheckBox("Show masked maps")
         self.heatmap_checkbox.setChecked(True)  # default ON
         self.heatmap_checkbox.toggled.connect(self.toggle_heatmap)
         self.toolbar.addWidget(self.heatmap_checkbox)
 
-        self.toolbar.addWidget(QLabel("     Views:"))
+        # Expanding spacer pushes the "Views:" group to the far right
+        # of the toolbar — aligning it with the volume-view panels
+        # (In-line View 1/2), which sit at the far right of the main
+        # content row below, rather than wherever it would otherwise
+        # land right after "Show masked maps".
+        views_spacer = QWidget()
+        views_spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.toolbar.addWidget(views_spacer)
+        self.toolbar.addWidget(QLabel("Views:"))
 
         axial_action = QAction("Top", self)
         axial_action.triggered.connect(lambda: self.set_preset_view("top"))
@@ -765,27 +837,19 @@ class MultiGiftiViewerWidget(QWidget):
         oblique_left_action.triggered.connect(lambda: self.set_preset_view("oblique_left"))
         self.toolbar.addAction(oblique_left_action)
 
-        # Align the Screenshot button's right edge with row 1's right
-        # edge (which now ends at "Oblique Left", the last item added
-        # above) — estimated from sizeHint()s, the same mechanism
-        # already used above to match the two "Remove ..." buttons'
-        # widths, since nothing is actually shown/laid out yet at
-        # __init__ time to measure real pixel positions from.
-        # markers_leading_width is measured BEFORE adding the
-        # Screenshot action/spacer, so it only reflects "Remove
-        # Placement Markers" (already width-matched above).
-        row1_width = self.toolbar.sizeHint().width()
-        markers_leading_width = self.markersToolbar.sizeHint().width()
+        # Expanding spacer pushes Screenshot to the far right of this
+        # row too — same technique as the "Views:" group above, so
+        # both rows independently align to the window's own right
+        # edge (and therefore to each other, and to the volume-view
+        # panels below) rather than one trying to measure and match
+        # the other's content-dependent width.
+        screenshot_spacer = QWidget()
+        screenshot_spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.markersToolbar.addWidget(screenshot_spacer)
 
         screenshot_action = QAction("Screenshot", self)
         screenshot_action.triggered.connect(self.save_screenshot)
         self.markersToolbar.addAction(screenshot_action)
-        screenshot_width = self.markersToolbar.widgetForAction(screenshot_action).sizeHint().width()
-
-        needed_spacer_width = max(0, row1_width - markers_leading_width - screenshot_width)
-        spacer = QWidget()
-        spacer.setFixedWidth(int(needed_spacer_width))
-        self.markersToolbar.insertWidget(screenshot_action, spacer)
 
         # Hook up selection synchronization
         for v in self.viewers:
@@ -866,7 +930,8 @@ class MultiGiftiViewerWidget(QWidget):
         (accumulated placement markers on the head surface are left in
         place), clears the volume-view markers, resets the rotation
         slider, and disables "Save Placement" again until a new
-        vertex is picked."""
+        vertex is picked. Orientation mode is left as the user set it
+        — only the placement itself is cleared, not that choice."""
         self.select_vertex = None
         self.current_pick_pos = None
         self.current_vertex_normal = None
@@ -879,10 +944,6 @@ class MultiGiftiViewerWidget(QWidget):
         self.rollSlider.setValue(0)
         self.rollSlider.blockSignals(False)
         self.rollLabel.setText("0°")
-        self.orientation_mode = "target_centered"
-        self.orientationComboBox.blockSignals(True)
-        self.orientationComboBox.setCurrentIndex(0)
-        self.orientationComboBox.blockSignals(False)
         self.generateTrajectoryPushButton.setEnabled(False)
         self.generateTrajectoryPushButton.setStyleSheet("""
             QPushButton {
@@ -1597,6 +1658,13 @@ class VolumeFocusViewer(QWidget):
         image = self.reader.GetOutput()
         self.scalar_range = image.GetScalarRange()
 
+        # vtkNIFTIImageReader's own GetOutput() is in raw voxel-index
+        # space, not true world space — see _get_nifti_orientation_matrix
+        # for why this matters and how it was confirmed. Retrieved once
+        # here; applied to the actual rendered image slice(s) in
+        # _add_view(), and to the bounds below for correct camera framing.
+        self.t1_orientation_matrix = _get_nifti_orientation_matrix(self.reader)
+
         # Fixed framing target: the volume's own center and a radius
         # (half the bounding-box diagonal) large enough to always show
         # the whole volume under parallel projection, regardless of
@@ -1606,20 +1674,32 @@ class VolumeFocusViewer(QWidget):
         # ParallelScale, not camera distance, so only this needs to
         # change (cam_distance below just needs to stay far enough away
         # to avoid clipping, independent of zoom level).
-        xmin, xmax, ymin, ymax, zmin, zmax = image.GetBounds()
+        raw_bounds = image.GetBounds()
+        xmin, xmax, ymin, ymax, zmin, zmax = _get_world_bounds(raw_bounds, self.t1_orientation_matrix)
         self.volume_center = np.array([(xmin + xmax) / 2.0, (ymin + ymax) / 2.0, (zmin + zmax) / 2.0])
         self.volume_half_diagonal = 0.5 * np.linalg.norm(
             [xmax - xmin, ymax - ymin, zmax - zmin])
         self.zoom_factor = 0.4
+        # Startup diagnostic: where the T1 is placed in world (mesh) space.
+        # Its presence in the console also confirms this Viewer.py includes
+        # the NIfTI orientation handling (an older copy won't print it).
+        print(f"[PlanTUS viewer] VTK {vtk.vtkVersion.GetVTKVersion()} | T1 world bounds (mm): "
+              f"x[{xmin:.0f},{xmax:.0f}] y[{ymin:.0f},{ymax:.0f}] z[{zmin:.0f},{zmax:.0f}] | "
+              f"orientation matrix applied: {self.t1_orientation_matrix is not None}")
 
         # --- Target ROI overlay (opaque green wherever the mask is set,
         # fully transparent elsewhere, via a 2-entry lookup table) ---
         self.roi_reader = None
+        self.roi_orientation_matrix = None
         self.roi_lut = None
         if roi_path:
             self.roi_reader = vtk.vtkNIFTIImageReader()
             self.roi_reader.SetFileName(roi_path)
             self.roi_reader.Update()
+            # Retrieved separately from the T1's — don't assume they're
+            # identical, even though the ROI should normally already be
+            # co-registered to the same T1 space.
+            self.roi_orientation_matrix = _get_nifti_orientation_matrix(self.roi_reader)
 
             self.roi_lut = vtk.vtkLookupTable()
             self.roi_lut.SetNumberOfTableValues(2)
@@ -1661,6 +1741,8 @@ class VolumeFocusViewer(QWidget):
 
         image_slice = vtk.vtkImageSlice()
         image_slice.SetMapper(reslice_mapper)
+        if self.t1_orientation_matrix is not None:
+            image_slice.SetUserMatrix(self.t1_orientation_matrix)
         prop = image_slice.GetProperty()
         lo, hi = self.scalar_range
         prop.SetColorWindow(max(hi - lo, 1e-3))
@@ -1687,6 +1769,8 @@ class VolumeFocusViewer(QWidget):
 
             roi_image_slice = vtk.vtkImageSlice()
             roi_image_slice.SetMapper(roi_reslice_mapper)
+            if self.roi_orientation_matrix is not None:
+                roi_image_slice.SetUserMatrix(self.roi_orientation_matrix)
             roi_prop = roi_image_slice.GetProperty()
             roi_prop.SetLookupTable(self.roi_lut)
             roi_prop.SetUseLookupTableScalarRange(True)
@@ -1913,7 +1997,8 @@ def PrepareShowResults(skin_surf,distances_skin,distances_skin_thresholded,
                     CallBackGenerateTrajectory=None,
                     t1_path=None, additional_offset=0.0, min_distance=0.0, max_distance=100.0,
                     roi_path=None, roi_stl_path=None, focal_distance_list=None, flhm_list=None,
-                    transducer_diameter=20.0, offset=0.0, initial_vertex=None):
+                    transducer_diameter=20.0, offset=0.0, initial_vertex=None,
+                    skull_thickness_skin=None, composite_skin=None, max_angle=20.0):
 
     # Replace with path to your GIFTI file
     gifti_files = []
@@ -1930,13 +2015,36 @@ def PrepareShowResults(skin_surf,distances_skin,distances_skin_thresholded,
     gifti_files.append((skin_surf,
                         angles_skin,
                         distances_skin_thresholded,
-                        [0,20],
+                        [0,max_angle],
                         'Transducer Tilt'))
     gifti_files.append((skin_surf,
                         skin_skull_angles_skin,
                         distances_skin_thresholded,
                         [0,20],
                         'Skin-Skull Angle'))
+    if skull_thickness_skin is not None:
+        # Added as a 5th entry, not one of the first 4 — selectable in
+        # every panel's dropdown (built from the full gifti_files list
+        # below) without becoming any panel's default (only entries
+        # 0-3 are ever used as a panel's initial selectedFunc, see the
+        # viewer-creation loop in MultiGiftiViewerWidget).
+        gifti_files.append((skin_surf,
+                            skull_thickness_skin,
+                            distances_skin_thresholded,
+                            [0,10],
+                            'Skull Thickness'))
+    if composite_skin is not None:
+        # Composite score is a weighted geometric mean of several
+        # [0,1]-scaled utility components, so [0,1] is its natural
+        # range — fixed rather than auto-scaled for interpretability.
+        # Same pattern as skull thickness above: appended past index 3,
+        # so it's selectable in every panel's dropdown without ever
+        # being a panel's default.
+        gifti_files.append((skin_surf,
+                            composite_skin,
+                            distances_skin_thresholded,
+                            [0,1],
+                            'Composite Score'))
 
     widget = MultiGiftiViewerWidget(gifti_files,MaxViews=4,
                                     callBackAfterGenTrajectory=CallBackGenerateTrajectory,

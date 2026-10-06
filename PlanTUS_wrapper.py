@@ -82,6 +82,13 @@ with open(args.config, 'r') as file:
 
 IDTarget = config.get("IDTarget", "")
 
+# Number of Taubin-smoothing iterations applied to the extracted skin
+# surface before any metrics are computed on it (default: a small
+# amount, enough to knock down segmentation-level mesh noise without
+# eroding real anatomical detail; set to 0 to disable entirely and use
+# the raw SimNIBS-extracted surface, as in previous versions).
+skin_smoothing_iterations = config.get("skin_smoothing_iterations", 2)
+
 # Maximum minimum, and optimal focal depth of transducer (in mm)
 max_distance = config["max_distance"]
 min_distance = config["min_distance"]
@@ -257,7 +264,8 @@ if args.placement_only<0:
         # -----------------------------------------------------------------------------
 
         # Skin
-        PlanTUS.convert_simnibs_mesh_to_surfaces(simnibs_mesh_filepath, [1005], "skin", output_path)
+        PlanTUS.convert_simnibs_mesh_to_surfaces(simnibs_mesh_filepath, [1005], "skin", output_path,
+                                                 smoothing_iterations=skin_smoothing_iterations)
         PlanTUS.add_structure_information(output_path + "/skin.surf.gii", "CORTEX_LEFT")
 
         # Skull
@@ -363,7 +371,23 @@ if args.placement_only<0:
         skull_normals_in = skull_normals[non_empty_idx]
         skull_to_skin_hits = PlanTUS.compute_vector_mesh_intersections(skull_coords_in, skull_normals_in, os.path.join(output_path, "skin.stl"), -500)
 
-        all_xy = np.vstack([np.array(h) for h in skull_to_skin_hits if h])
+        non_empty_hits = [np.array(h) for h in skull_to_skin_hits if h]
+        if non_empty_hits:
+            all_xy = np.vstack(non_empty_hits)
+        else:
+            # No ray from the skull surface reached both the target ROI and
+            # the skin. Previously this crashed in np.vstack with a cryptic
+            # "need at least one array to concatenate". This metric is
+            # auxiliary (written to a file, not used by anything downstream),
+            # so degrade to an empty map and say why. Causes: a target ROI
+            # that's tiny / outside the skull's 200 mm ray range, or broken
+            # ray casting (VTK 9.7.0/9.7.1's vtkOBBTree returns corrupt
+            # intersections; PlanTUS no longer uses it, but older copies do).
+            print("Warning: no skull-surface ray hit the target ROI "
+                  f"({len(skull_coords_in)} of {len(skull_coords)} skull vertices); "
+                  "leaving the skin_skull_target_intersection map empty. "
+                  "Check that the ROI is non-empty and lies inside the head.")
+            all_xy = np.empty((0, 3))
         intersection_coords = np.round(all_xy, 2)
         mesh_round = np.round(skin_coords, 2)
 
@@ -553,6 +577,58 @@ if args.placement_only<0:
         f"SkullThickness{weight_skull_thickness}"
     )
 
+    # --- Sanity check: T1 and SimNIBS mesh must share a world space
+    # (warns only). Runs here so it covers fresh and cached runs alike.
+    PlanTUS.check_t1_mesh_consistency(t1_filepath, os.path.join(output_path, "skin.surf.gii"))
+
+    # --- Optional Workbench scene for the whole-head metric maps
+    # (the planning stage, before any specific vertex is picked) —
+    # never opened/required by PlanTUS itself, just a data file for
+    # anyone who wants to browse these maps in Workbench directly.
+    # Runs unconditionally here (not just on a fresh run) since it only
+    # needs the files to exist on disk, regardless of whether they were
+    # just computed above or loaded from a previous run. Absolute
+    # paths, not relative: the template's BasePathType=AUTOMATIC means
+    # Workbench resolves absolute paths correctly regardless of the
+    # scene file's own location, which matters now that output_folder
+    # lets the output base directory sit anywhere.
+    planning_scene_variable_names = [
+        'SKIN_SURFACE_FILENAME', 'SKIN_SURFACE_FILEPATH',
+        'SKULL_SURFACE_FILENAME', 'SKULL_SURFACE_FILEPATH',
+        'T1_FILENAME', 'T1_FILEPATH',
+        'MASK_FILENAME', 'MASK_FILEPATH',
+        'DISTANCES_FILENAME', 'DISTANCES_FILEPATH',
+        'DISTANCES_MAX_FILENAME', 'DISTANCES_MAX_FILEPATH',
+        'INTERSECTION_FILENAME', 'INTERSECTION_FILEPATH',
+        'ANGLES_FILENAME', 'ANGLES_FILEPATH',
+        'ANGLES_SKIN_SKULL_FILENAME', 'ANGLES_SKIN_SKULL_FILEPATH',
+    ]
+    planning_scene_files = [
+        os.path.join(output_path, "skin.surf.gii"),
+        os.path.join(output_path, "skull.surf.gii"),
+        t1_filepath,
+        target_roi_filepath,
+        os.path.join(output_path, "distances_skin.func.gii"),
+        os.path.join(output_path, "distances_skin_thresholded.func.gii"),
+        os.path.join(output_path, "target_intersection_skin.func.gii"),
+        os.path.join(output_path, "angles_skin.func.gii"),
+        os.path.join(output_path, "skin_skull_angles_skin.func.gii"),
+    ]
+    planning_scene_variable_values = []
+    for f in planning_scene_files:
+        planning_scene_variable_values += [os.path.basename(f), os.path.abspath(f)]
+
+    try:
+        PlanTUS.create_scene(planning_scene_template_filepath,
+                             os.path.join(output_path, "scene.scene"),
+                             planning_scene_variable_names,
+                             planning_scene_variable_values)
+    except Exception as e:
+        # Purely optional output — never let a missing/unreadable
+        # template (or any other issue building the scene file) fail
+        # the actual pipeline over it.
+        print(f"Warning: could not create Workbench planning scene file ({e}); skipping.")
+
     # ---------------------------------------------------------------
     if args.skip_viewer:
             sys.exit(0)  # skip opening the viewer, as requested
@@ -623,7 +699,10 @@ if args.placement_only<0:
                                       flhm_list=flhm_list,
                                       transducer_diameter=transducer_diameter,
                                       offset=plane_offset,
-                                      initial_vertex=optimal_vertex)
+                                      initial_vertex=optimal_vertex,
+                                      skull_thickness_skin=output_path + os.sep + "skull_thickness_skin.func.gii",
+                                      composite_skin=composite_path,
+                                      max_angle=max_angle)
 
     WidgetViewer.resize(1700, 700)
     layout.addWidget(WidgetViewer)

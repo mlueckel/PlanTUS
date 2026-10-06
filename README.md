@@ -72,6 +72,8 @@ conda activate simnibs_env
 pip install nilearn pyyaml h5py trimesh vtk PyQt5 potpourri3d
 ```
 
+> **VTK versions:** current PlanTUS works with any recent VTK (tested with 9.3.1 through 9.7.1). Older copies of PlanTUS used `vtkOBBTree` for ray casting, which is broken in VTK 9.7.0/9.7.1 (silently wrong intersections, occasional crashes, which can surface as errors such as `ValueError: need at least one array to concatenate`). If you see this with an older copy, update PlanTUS rather than downgrading VTK (as a stopgap, `pip install "vtk<=9.6.2"` also works).
+
 ---
 
 # Instructions
@@ -143,6 +145,7 @@ Each weight must be in `[0, 1]` and, conventionally, the five weights sum to 1. 
 **Optional keys:**
 - `output_folder`: base directory to write PlanTUS' `PlanTUS/<ROI-name>` output folder under. If omitted, defaults to the m2m folder (next to the `.msh` file) — the same location PlanTUS has always used.
 - `IDTarget`: a custom label used to name output files/folders for a given placement (falls back to `vtx<N>`, the vertex number, if omitted)
+- `skin_smoothing_iterations`: number of Taubin-smoothing iterations applied to the extracted skin surface before any metric is computed on it (default `2`; `0` disables smoothing and uses the raw SimNIBS surface). Light smoothing reduces segmentation-level mesh noise in the per-vertex normals (and therefore in the tilt/angle maps) without shrinking the surface or removing real anatomy.
 
 **Example (`PlanTUS_config_CTX-545.yaml`):**
 ```yaml
@@ -169,6 +172,9 @@ weight_skin_target_angles: 0.2
 weight_skin_target_intersections: 0.2
 weight_skin_skull_angles: 0.2
 weight_skull_thickness: 0.2
+# Additional options -----------------------------------------------------------
+# Optional: Taubin smoothing iterations for the skin surface (default 2, 0 = off)
+# skin_smoothing_iterations: 2
 ```
 
 Copy one of the provided templates, rename it after your transducer, adjust the calibration values, and point `PlanTUS_wrapper.py` at it.
@@ -206,7 +212,7 @@ PlanTUS also automatically identifies no-go / avoidance regions (grey areas on t
 
 ## 3. Select transducer position(s)
 
-Unless `--skip_viewer` was given, PlanTUS opens its own interactive viewer window once the metrics above have been computed. The window shows four head-surface panels (Distance, Target Intersection, Transducer Tilt, Skin-Skull Angle — switchable via the dropdown above each panel) plus two oblique volume-view panels on the right, following the trajectory into the head.
+Unless `--skip_viewer` was given, PlanTUS opens its own interactive viewer window once the metrics above have been computed. The window shows four head-surface panels (Distance, Target Intersection, Transducer Tilt, Skin-Skull Angle — switchable via the dropdown above each panel, which additionally offers **Skull Thickness** and **Composite Score**; both are loaded but not shown by default) plus two oblique volume-view panels on the right, following the trajectory into the head. The Transducer Tilt color scale runs from 0° to the `max_angle` set in your config.
 
 <img src="https://github.com/user-attachments/assets/7a71ff06-2d42-430c-9161-bf2b01bd4377" width="1000" />
 
@@ -217,7 +223,7 @@ On picking a vertex:
 - A semi-transparent transducer model (body + a handle/cable indicator) appears at the placement. Use the **Transducer rotation** slider to adjust roll around the beam axis before saving.
 - The **Orientation** dropdown controls how that beam axis is aimed: **Towards target center** (default) aims exactly at the target ROI's center of gravity, regardless of local skin curvature; **Along surface normal** aims along the local skin surface normal instead, which is not necessarily towards the target. Switching modes updates the live preview immediately.
 - The two volume-view panels update to follow the trajectory, showing the estimated intracranial focus (an ellipsoid sized from your transducer's focal-distance/FLHM calibration) and the target ROI (green outline).
-- A small marker dot is dropped on the head surface at the picked vertex. Dots from earlier picks in the same session are **not** removed by picking again — "Remove Placement Markers" clears them explicitly; "Remove Transducer Model" hides just the live preview model (and resets rotation and orientation back to their defaults).
+- A small marker dot is dropped on the head surface at the picked vertex. Dots from earlier picks in the same session are **not** removed by picking again — "Remove Placement Markers" clears them explicitly; "Remove Transducer Model" hides just the live preview model (and resets the rotation to 0°; your Orientation choice is kept).
 
 Click **Save Placement** to write the full set of output files for the current vertex (see [Output reference](#output-reference)) — this does **not** close the window, so you can keep picking and saving further candidate placements in the same session. The window only closes when you close it yourself.
 
@@ -249,7 +255,7 @@ See [Output reference](#output-reference) for the complete, per-format list of e
 
 **Localite**: The selected transducer placement can be easily imported into the Localite neuronavigation software (https://www.localite.de/en/products/tms-navigator/) as a target for transducer navigation (i.e., instrument marker), using the exported XML snippet.
 
-**Brainsight and BabelBrain**: PlanTUS also exports ready-to-import trajectory text files for Rogue Research's Brainsight and for [BabelBrain](https://github.com/ProteusMRIgHIFU/BabelBrain), using the same underlying pose but written in each tool's expected trajectory format.
+**Brainsight and BabelBrain**: PlanTUS also exports ready-to-import trajectory text files for Rogue Research's Brainsight and for [BabelBrain](https://github.com/ProteusMRIgHIFU/BabelBrain), using the same underlying pose but written in each tool's expected trajectory format. The BabelBrain trajectory is named `<ROI name>_<vertex>` inside the file.
 
 ---
 
@@ -264,7 +270,7 @@ All outputs are written into a per-target folder:
 ### Whole-head surface outputs (generated once per ROI, before you pick a position)
 | File | Description |
 |---|---|
-| `skin.surf.gii`, `skull.surf.gii` | Reconstructed skin and skull surfaces (GIFTI), extracted from the SimNIBS mesh |
+| `skin.surf.gii`, `skull.surf.gii` | Reconstructed skin and skull surfaces (GIFTI), extracted from the SimNIBS mesh (the skin surface is lightly smoothed, see `skin_smoothing_iterations`) |
 | `avoidance_skin.func.gii` | Per-vertex 0/1 mask marking no-go regions (eyes, ears, air cavities/sinuses, below head height) |
 | `distances_skin.func.gii`, `distances_skin_thresholded.func.gii` | Distance (mm) from each skin vertex to the target region's center of gravity; thresholded version restricts to vertices within `max_distance` |
 | `angles_skin.func.gii` | Angle (degrees) between the skin surface normal and the skin→target vector at each vertex — shown as "Transducer Tilt" in the viewer |
@@ -273,8 +279,11 @@ All outputs are written into a per-target folder:
 | `skull_thickness_skin.func.gii`, `skull_thickness_skull.func.gii` | Estimated skull thickness (mm) under each vertex |
 | `composite_TargetDistance<..>_TargetAngle<..>_TargetIntersection<..>_SkinSkullAngle<..>_SkullThickness<..>_skin.func.gii` | The combined, weighted composite quality score per vertex (see below), with the weights used baked into the filename for traceability |
 | `<ROI-name>_3Dmodel.stl` | Triangulated 3D surface of the target ROI, used for the beam-intersection calculations |
+| `scene.scene` | *Optional.* Connectome Workbench scene bundling the skin/skull surfaces, T1, target mask and the metric maps, for anyone who wants to browse them in Workbench (`wb_view scene.scene`). PlanTUS itself neither needs nor opens Workbench; files are referenced by absolute path, so regenerate the scene if you move the folder |
 
 **How the composite score is built:** each of the five raw metrics (skin–target distance, tilt angle, beam–target intersection length, skin–skull angle, skull thickness) is rescaled to a `[0, 1]` "utility" (with distance evaluated relative to your transducer's `optimal_distance`, not just `max_distance`), zeroed out for vertices beyond `max_distance` or inside an avoidance region, weighted by your config's `weight_*` values, and combined via a weighted geometric mean — so a very poor score on one criterion can't be fully compensated for by good scores elsewhere, and a vertex missing on any required criterion scores 0 overall.
+
+**How the no-go (avoidance) mask is built:** a skin vertex is excluded if (1) an air cavity lies within 40 mm along its inward normal, (2) it is within 30 mm of an eye center, (3) it is within 15 mm of an ear (the LPA/RPA fiducial shifted 15 mm posterior), or (4) it lies below a height cutoff halfway between eye level and the lowest point of the skin surface. Cavities (paranasal sinuses, nasal cavity, mastoid air cells, ...) are taken to be the air enclosed by the head in charm's `final_tissues.nii.gz`, found with a 3-D hole fill plus a slice-wise fill along the axial axis. The slice-wise fill is needed because these cavities connect to the outside through the nostrils and airway, so they are not holes in 3-D. The no-go region is finally grown along the surface by a safety margin of `transducer_diameter / 2.5` mm, so a smaller transducer keeps a smaller margin around all of these regions.
 
 ### Position-specific outputs (generated after you select and save a vertex)
 Written into a subfolder named after `IDTarget` (or `vtx<N>` if not set):
@@ -288,9 +297,10 @@ Written into a subfolder named after `IDTarget` (or `vtx<N>` if not set):
 | `<roi>_<ID>_Trajectory_Brainsight.txt` | Brainsight | Trajectory file in Brainsight's native format |
 | `<roi>_<ID>_Trajectory_BabelBrain.txt` | BabelBrain | Trajectory file adapted for BabelBrain — anchored at the target ROI's center of gravity in "Towards target center" mode, or at a point along the trajectory itself (the beam-target intersection midpoint, or a point at the estimated focal distance if it doesn't intersect) in "Along surface normal" mode — see the [Orientation](#3-select-transducer-positions) note above and [`CHANGELOG.md`](./CHANGELOG.md) |
 | `<roi>_<ID>_PositionMatrix_Transducer.txt` | visualization | Pose transform (mm) used to place the transducer 3D model |
-| `<roi>_<ID>_TransducerModel.surf.gii` | visualization | The transducer 3D model (device-specific or generic cylinder), transformed to the selected pose |
+| `<roi>_<ID>_TransducerModel.surf.gii` | visualization | The transducer 3D model (a generic cylinder sized from your config), transformed to the selected pose |
 | `<roi>_<ID>_PositionMatrix_Focus.txt` | visualization | Pose transform (mm) used to place the estimated-focus ellipsoid |
 | `<roi>_<ID>_Focus_<focal_distance>mm.surf.gii` / `.nii.gz` | visualization | Simplified ellipsoidal representation of the expected acoustic focus (surface and binary volume), sized from the FLHM at the estimated focal distance |
+| `scene.scene` | visualization (optional) | Connectome Workbench scene showing this placement: skin surface, T1, target mask, transducer model and focus (not used by PlanTUS itself; absolute paths) |
 
 > **Filenames changed in v2.0** — see [`CHANGELOG.md`](./CHANGELOG.md) for the old→new mapping if you have scripts depending on the previous naming.
 
@@ -304,6 +314,9 @@ Written into a subfolder named after `IDTarget` (or `vtx<N>` if not set):
 - **Re-running on the same inputs.** Use `--overwrite` or `--reuse_existing` to skip the interactive y/n prompt when PlanTUS detects it's already been run for the same T1/mesh/ROI/config combination.
 - **Make sure your FLHM calibration covers your actual working distances.** `focal_distance_list`/`flhm_list` are fit with an unconstrained cubic curve — evaluating it well outside the calibrated range can produce unrealistic FLHM/focus-size values.
 - **k-Plan compatibility starts before `charm`.** The T1→MNI/ACPC alignment and origin correction (`ImageTransform_4kPlan.py`) must be done *before* running SimNIBS' `charm`, not after — charm needs to run on the already-corrected image.
+- **Re-run with `--overwrite` after updating PlanTUS.** Otherwise cached results from an older version (in particular the no-go mask and the ray-based metrics) are reused.
+- **"Skin surface not inside the T1's extent" warning.** PlanTUS checks that the skin surface lies inside the T1's world-space extent. A warning means the T1 you passed is probably not the one charm was run on (use `m2m_<subject>/T1.nii.gz`); slice views, focus volumes and scene files would then be misplaced relative to the mesh. The check catches gross mismatches (tens of mm), not subtle ones.
+- **Rotation of exactly 0°/180°.** The exported rotation around the beam axis is deterministic and set with the rotation slider; a value of exactly 0° or 180° is exported with a 1° offset as a precaution: earlier versions produced an exactly-zero entry in the position matrix at these values, and BabelBrain failed to load those trajectories. The slider still reads 0°.
 - Remember: **PlanTUS is a heuristic planning aid, not a validated acoustic simulator.** Always confirm any selected placement with proper acoustic simulation software (k-Plan, k-Wave, BabelBrain, …) before sonicating.
 
 ---
