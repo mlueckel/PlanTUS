@@ -2,6 +2,12 @@
 
 ## v2.0.0
 
+**Tested under:** Python 3.11.10, SimNIBS 4.5.0, numpy 1.26.4, scipy 1.14.1, nibabel 5.3.0, nilearn 0.14.0, pandas 3.0.3, PyYAML 6.0.2, h5py 3.11.0, trimesh 5.1.0, vtk 9.6.2, PyQt5 5.15.11 (Linux, x86_64).
+
+### Added
+
+- `--babelbrain_integration` flag: after clicking **Generate placement**, a dialog asks whether to use the placement in BabelBrain. On **Yes**, the BabelBrain trajectory file is copied to `<output base>/PlanTUS/BabelBrain_trajectory.txt` (overwriting any earlier one) and PlanTUS closes. `prepare_acoustic_simulation()` now returns the trajectory file path.
+
 ### Breaking changes
 
 **All per-vertex output filenames have changed.** The identifying `<ROI>_vtx<N>` segment now comes first, followed by a category and type, instead of a prefix-first scheme. If you have scripts that parse PlanTUS output filenames, they will need updating.
