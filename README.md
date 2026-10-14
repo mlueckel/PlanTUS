@@ -74,6 +74,26 @@ pip install nilearn pyyaml h5py trimesh vtk PyQt5 potpourri3d
 
 > **VTK versions:** current PlanTUS works with any recent VTK (tested with 9.3.1 through 9.7.1). Older copies of PlanTUS used `vtkOBBTree` for ray casting, which is broken in VTK 9.7.0/9.7.1 (silently wrong intersections, occasional crashes, which can surface as errors such as `ValueError: need at least one array to concatenate`). If you see this with an older copy, update PlanTUS rather than downgrading VTK (as a stopgap, `pip install "vtk<=9.6.2"` also works).
 
+### Tested under
+PlanTUS has been tested with the following versions (Ubuntu, Linux 7.0, x86_64; SimNIBS environment):
+
+| Package | Version |
+|---|---|
+| Python | 3.11.10 |
+| simnibs | 4.5.0 |
+| numpy | 1.26.4 |
+| scipy | 1.14.1 |
+| nibabel | 5.3.0 |
+| nilearn | 0.14.0 |
+| pandas | 3.0.3 |
+| PyYAML | 6.0.2 |
+| h5py | 3.11.0 |
+| trimesh | 5.1.0 |
+| vtk | 9.6.2 |
+| PyQt5 | 5.15.11 |
+
+The optional packages (`potpourri3d`, `PySide6`, `scikit-image`, `antspyx`) were **not** installed in this setup. Other versions may work but have not been verified on this configuration.
+
 ---
 
 # Instructions
@@ -114,6 +134,7 @@ python PlanTUS_wrapper.py <t1> <mesh> <roi> <config> [options]
 |---|---|
 | `--placement_only <N>` | Skip the interactive selection step entirely and directly (re-)generate the transducer placement for surface vertex number `N`. Useful for scripting or re-exporting outputs for a position you already picked. |
 | `--skip_viewer` | Run all calculations but don't open the interactive viewer window — useful for batch/headless processing. |
+| `--babelbrain_integration` | Interactive hand-off to [BabelBrain](https://github.com/ProteusMRIgHIFU/BabelBrain): each time you click **Generate placement**, PlanTUS asks *"Do you want to use this transducer placement in BabelBrain?"*. **No** → normal outputs only, and you can keep selecting placements. **Yes** → normal outputs, plus the BabelBrain trajectory is copied to `<output base>/PlanTUS/BabelBrain_trajectory.txt` (overwritten on each acceptance) and PlanTUS closes automatically. Ignored with `--placement_only` / `--skip_viewer`. |
 | `--overwrite` | If existing PlanTUS results are found for the same inputs (T1, mesh, ROI, and transducer settings), overwrite them without prompting. |
 | `--reuse_existing` | If existing PlanTUS results are found for the same inputs, reuse them without prompting (skips recomputation, jumps straight to the viewer with previously generated data). |
 

@@ -1574,8 +1574,10 @@ def prepare_acoustic_simulation(vertex_number: int,
                                 ID="",
                                 skip_viewer=False,
                                 roll_degrees: float = 0.0,
-                                orientation_mode: str = "target_centered") -> None:
+                                orientation_mode: str = "target_centered") -> str:
     """End-to-end preparation for one candidate vertex (simulation folder).
+
+    Returns the path of the generated BabelBrain trajectory file.
 
     orientation_mode controls how the transducer's beam axis (vertex_vector)
     is oriented at the chosen skin vertex:
@@ -1714,9 +1716,11 @@ def prepare_acoustic_simulation(vertex_number: int,
     else:
         babelbrain_anchor_coordinates = roi_center_of_gravity(target_roi_filepath)
 
+    babelbrain_trajectory_path = os.path.join(
+        output_path_vtx, f"{target_roi_name}_{suffix}_Trajectory_BabelBrain.txt")
     export_BabelBrain_trajectory(position_matrix_SimNIBS,
                                  babelbrain_anchor_coordinates,
-                                 os.path.join(output_path_vtx, f"{target_roi_name}_{suffix}_Trajectory_BabelBrain.txt"),
+                                 babelbrain_trajectory_path,
                                  roi_name=f"{target_roi_name}_{suffix}")
 
     # --- Optional: transform transducer model
@@ -1795,7 +1799,7 @@ def prepare_acoustic_simulation(vertex_number: int,
 
     # --- Visualize results
     if skip_viewer:
-        return
+        return babelbrain_trajectory_path
     from Viewer import FinalResultViewer
     from PyQt5.QtWidgets import QDialog,QVBoxLayout
     DlgResults=QDialog()
@@ -1812,3 +1816,4 @@ def prepare_acoustic_simulation(vertex_number: int,
     layout.addWidget(widget)
     DlgResults.resize(600, 600)
     DlgResults.exec()
+    return babelbrain_trajectory_path

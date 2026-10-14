@@ -53,6 +53,8 @@ if __name__ == "__main__":
     parser.add_argument( "--skip_viewer",action="store_true",help="Run calculations but skip opening the viewer window")
     parser.add_argument( "--placement_only",type=int,default=-1,help="Optional integer to run only the generation of a placement for a known vertex (default: -1, i.e. interactive selection). Specify the vertex number."
 )
+    parser.add_argument("--babelbrain_integration", action="store_true",
+                        help="Interactive BabelBrain hand-off: when a placement is generated in the viewer, ask whether to use it in BabelBrain. If accepted, its BabelBrain trajectory file is copied to <output base>/PlanTUS/<ROI>/BabelBrain_trajectory.txt (overwriting any previous one) and the viewer closes automatically.")
     parser.add_argument("--overwrite", action="store_true", help="If existing PlanTUS results are found for the same inputs, overwrite them without prompting.")
     parser.add_argument("--reuse_existing", action="store_true", help="If existing PlanTUS results are found for the same inputs, reuse them without prompting.")
 
@@ -256,6 +258,9 @@ if transducer_surface_model_filepath == "":
     # Generate a simple generic transducer surface model
     transducer_surface_model_filepath = os.path.join(output_path, "generic_transducer.surf.gii")
     PlanTUS.create_surface_transducer_model(transducer_diameter/2, plane_offset + additional_offset, transducer_surface_model_filepath)
+
+if args.babelbrain_integration and (args.placement_only >= 0 or args.skip_viewer):
+    print("Note: --babelbrain_integration only applies to interactive viewer sessions; ignored here.")
 
 if args.placement_only<0:
     if not skip_computation:
@@ -646,12 +651,22 @@ if args.placement_only<0:
     DlgResults.resize(1700, 700)
 
     def CallBackGenerateTrajectory(selection, roll_degrees, orientation_mode):
-        # Generates immediately for the current placement and does NOT
-        # close the dialog — the user can keep picking and generating
-        # further placements in the same session; the window only
-        # closes when they explicitly close it (native window controls).
+        # Generates immediately for the current placement. By default the
+        # dialog stays open so the user can keep picking and generating
+        # further placements. With --babelbrain_integration the user is
+        # additionally asked whether to hand this placement to BabelBrain;
+        # "Yes" copies its trajectory file to a fixed name and closes PlanTUS.
+        use_in_babelbrain = False
+        if args.babelbrain_integration:
+            from PyQt5.QtWidgets import QMessageBox
+            use_in_babelbrain = QMessageBox.question(
+                DlgResults, "PlanTUS",
+                "Do you want to use this transducer placement in BabelBrain?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No) == QMessageBox.Yes
+
         print('Generating trajectory for ID', selection, ' roll:', roll_degrees, ' orientation_mode:', orientation_mode)
-        PlanTUS.prepare_acoustic_simulation(selection,
+        trajectory_path = PlanTUS.prepare_acoustic_simulation(selection,
                                             output_path,
                                             target_roi_filepath,
                                             t1_filepath,
@@ -669,6 +684,20 @@ if args.placement_only<0:
                                             skip_viewer=True,
                                             roll_degrees=roll_degrees,
                                             orientation_mode=orientation_mode)
+
+        if use_in_babelbrain:
+            from PyQt5.QtCore import QTimer
+            from PyQt5.QtWidgets import QMessageBox
+            babelbrain_target = os.path.join(os.path.dirname(output_path), "BabelBrain_trajectory.txt")
+            try:
+                shutil.copyfile(trajectory_path, babelbrain_target)
+            except Exception as e:
+                # Do not close the viewer if the hand-off failed
+                QMessageBox.critical(DlgResults, "PlanTUS",
+                                     f"Could not copy the BabelBrain trajectory:\n{e}")
+                return
+            print(f"BabelBrain trajectory for vertex {selection} copied to:\n  {babelbrain_target}\nClosing PlanTUS.")
+            QTimer.singleShot(0, DlgResults.accept)
 
     # Suggest an initial placement: the vertex with the best (highest)
     # composite metric score, immediately visualized when the viewer
